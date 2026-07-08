@@ -1,0 +1,1192 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>IDX Signal Parser — Zeta AI Telegram Journal</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{
+    --bg: #10141a;
+    --panel: #171d26;
+    --panel-2: #1d2530;
+    --line: #2a3340;
+    --text: #e7e6e0;
+    --text-dim: #8c96a3;
+    --amber: #d4a73d;
+    --amber-dim: #8f7a3f;
+    --green: #4fae79;
+    --red: #c1554a;
+    --blue: #5b8fc9;
+    --radius: 3px;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; background:var(--bg); color:var(--text);
+    font-family:'IBM Plex Sans', sans-serif; font-size:14px;
+    -webkit-font-smoothing:antialiased;
+  }
+  .mono{ font-family:'IBM Plex Mono', monospace; }
+  .wrap{ max-width:1280px; margin:0 auto; padding:28px 24px 60px; }
+
+  /* header */
+  header{
+    display:flex; align-items:flex-end; justify-content:space-between;
+    border-bottom:1px solid var(--line); padding-bottom:18px; margin-bottom:22px;
+    gap:16px; flex-wrap:wrap;
+  }
+  .brand-eyebrow{
+    font-family:'IBM Plex Mono', monospace; font-size:11px; letter-spacing:.14em;
+    color:var(--amber); text-transform:uppercase; margin-bottom:6px;
+  }
+  h1{ font-family:'Space Grotesk', sans-serif; font-size:26px; margin:0; font-weight:600; letter-spacing:-0.01em;}
+  .sub{ color:var(--text-dim); font-size:13px; margin-top:4px; }
+  .file-controls{ display:flex; align-items:center; gap:10px; }
+  .filename-tag{
+    font-family:'IBM Plex Mono', monospace; font-size:12px; color:var(--text-dim);
+    border:1px solid var(--line); padding:6px 10px; border-radius:var(--radius);
+    max-width:260px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  }
+  button, .btn{
+    font-family:'IBM Plex Sans', sans-serif; font-size:13px; font-weight:600;
+    background:var(--panel-2); color:var(--text); border:1px solid var(--line);
+    padding:8px 14px; border-radius:var(--radius); cursor:pointer; transition:.12s border-color, .12s background;
+  }
+  button:hover, .btn:hover{ border-color:var(--amber-dim); background:#232b37; }
+  button.primary{ background:var(--amber); color:#1a1406; border-color:var(--amber); }
+  button.primary:hover{ background:#e0b64f; }
+  input[type=file]{ display:none; }
+
+  /* empty state */
+  .empty{
+    border:1px dashed var(--line); border-radius:6px; padding:70px 30px;
+    text-align:center; margin-top:40px; transition:.15s border-color, .15s background;
+  }
+  .empty.drag{ border-color:var(--amber); background:#181f2a; }
+  .empty h2{ font-family:'Space Grotesk',sans-serif; font-weight:600; font-size:19px; margin:0 0 10px; }
+  .empty p{ color:var(--text-dim); max-width:460px; margin:0 auto 22px; line-height:1.6; font-size:13.5px; }
+  .empty ol{ text-align:left; display:inline-block; color:var(--text-dim); font-size:12.5px; line-height:1.9; margin:0 0 26px; }
+  .empty code{ background:var(--panel-2); padding:1px 6px; border-radius:2px; color:var(--amber); }
+
+  /* stat cards */
+  .stats-grid{
+    display:grid; grid-template-columns:repeat(6,1fr); gap:1px;
+    background:var(--line); border:1px solid var(--line); border-radius:6px; overflow:hidden;
+    margin-bottom:20px;
+  }
+  .stat-card{ background:var(--panel); padding:16px 14px; position:relative; }
+  .stat-label{ font-size:10.5px; text-transform:uppercase; letter-spacing:.08em; color:var(--text-dim); margin-bottom:8px; }
+  .stat-value{ font-family:'IBM Plex Mono',monospace; font-size:20px; font-weight:600; }
+  .stat-sub{ font-size:11px; color:var(--text-dim); margin-top:4px; }
+  .pos{ color:var(--green); } .neg{ color:var(--red); } .amber-txt{ color:var(--amber); }
+
+  .note{
+    font-size:12px; color:var(--text-dim); background:var(--panel);
+    border:1px solid var(--line); border-left:3px solid var(--amber-dim);
+    padding:10px 14px; border-radius:var(--radius); margin-bottom:20px; line-height:1.55;
+  }
+
+  /* equity curve */
+  .panel{ background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:18px 18px 10px; margin-bottom:20px; }
+  .panel-title{ font-family:'Space Grotesk',sans-serif; font-size:13.5px; font-weight:600; margin:0 0 12px; display:flex; align-items:center; gap:8px;}
+  .panel-title .tag{ font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:var(--amber); border:1px solid var(--amber-dim); padding:1px 6px; border-radius:2px; }
+
+  /* tabs */
+  .tabs{ display:flex; gap:4px; border-bottom:1px solid var(--line); margin-bottom:16px; }
+  .tab{
+    padding:9px 16px; font-size:12.5px; font-weight:600; color:var(--text-dim);
+    cursor:pointer; border-bottom:2px solid transparent; user-select:none;
+  }
+  .tab.active{ color:var(--text); border-bottom-color:var(--amber); }
+
+  /* filter bar */
+  .filter-bar{ display:flex; gap:10px; flex-wrap:wrap; margin-bottom:14px; align-items:center; }
+  .filter-bar input[type=text], .filter-bar select{
+    background:var(--panel-2); border:1px solid var(--line); color:var(--text);
+    padding:7px 10px; border-radius:var(--radius); font-size:12.5px; font-family:'IBM Plex Sans',sans-serif;
+  }
+  .filter-bar input[type=text]{ min-width:160px; }
+  .filter-bar .spacer{ flex:1; }
+  .count-tag{ font-size:11.5px; color:var(--text-dim); font-family:'IBM Plex Mono',monospace; }
+
+  /* auth screen */
+  .auth-wrap{ max-width:340px; margin:60px auto; text-align:center; }
+  .auth-wrap h2{ font-family:'Space Grotesk',sans-serif; font-weight:600; font-size:19px; margin:0 0 8px; }
+  .auth-wrap p{ color:var(--text-dim); font-size:13px; margin:0 0 22px; }
+  .auth-tabs{ display:flex; gap:4px; margin-bottom:18px; justify-content:center; }
+  .auth-tabs button{ background:none; border:1px solid var(--line); color:var(--text-dim); padding:6px 16px; border-radius:6px; cursor:pointer; font-size:12.5px; }
+  .auth-tabs button.active{ color:var(--text); border-color:var(--amber); }
+  .auth-field{ margin-bottom:12px; text-align:left; }
+  .auth-field label{ display:block; font-size:11.5px; color:var(--text-dim); margin-bottom:5px; }
+  .auth-field input{ width:100%; box-sizing:border-box; background:var(--panel-2); border:1px solid var(--line); color:var(--text); padding:9px 11px; border-radius:6px; font-size:13px; font-family:'IBM Plex Sans',sans-serif; }
+  .auth-msg{ font-size:12px; margin-top:12px; min-height:16px; }
+  .auth-msg.err{ color:#f87171; }
+  .auth-msg.ok{ color:#4ade80; }
+  .auth-submit{ width:100%; margin-top:6px; }
+
+  /* table */
+  .table-wrap{ overflow-x:auto; border:1px solid var(--line); border-radius:6px; }
+  table{ width:100%; border-collapse:collapse; font-size:12.5px; }
+  thead th{
+    text-align:left; padding:9px 12px; background:var(--panel-2); color:var(--text-dim);
+    font-weight:600; font-size:10.5px; text-transform:uppercase; letter-spacing:.05em;
+    border-bottom:1px solid var(--line); white-space:nowrap; position:sticky; top:0;
+  }
+  tbody td{ padding:9px 12px; border-bottom:1px solid var(--line); white-space:nowrap; }
+  tbody tr{ cursor:pointer; }
+  tbody tr:hover{ background:#1b222c; }
+  .symbol{ font-family:'IBM Plex Mono',monospace; font-weight:600; letter-spacing:.02em; }
+  .badge{ font-size:10.5px; font-weight:600; padding:2px 7px; border-radius:10px; letter-spacing:.02em; }
+  .badge-buy{ background:rgba(79,174,121,.15); color:var(--green); }
+  .badge-watchlist{ background:rgba(212,167,61,.15); color:var(--amber); }
+  .badge-tp{ background:rgba(79,174,121,.18); color:var(--green); }
+  .badge-locked{ background:rgba(91,143,201,.18); color:var(--blue); }
+  .badge-running{ background:rgba(212,167,61,.18); color:var(--amber); }
+  .badge-none{ background:rgba(140,150,163,.12); color:var(--text-dim); }
+  .badge-slhit{ background:rgba(193,85,74,.18); color:var(--red); }
+  .badge-expired{ background:rgba(140,150,163,.16); color:var(--text-dim); }
+  .badge-src-both{ background:rgba(79,174,121,.15); color:var(--green); }
+  .badge-src-json{ background:rgba(212,167,61,.15); color:var(--amber); }
+  .badge-src-xlsx{ background:rgba(91,143,201,.15); color:var(--blue); }
+
+  .sync-badge{ display:inline-flex; align-items:center; gap:6px; font-size:11.5px; font-weight:600; padding:4px 10px; border-radius:12px; cursor:default; white-space:nowrap; }
+  .sync-badge .dot{ width:7px; height:7px; border-radius:50%; flex:none; }
+  .sync-badge.sync-syncing{ background:rgba(212,167,61,.15); color:var(--amber); }
+  .sync-badge.sync-syncing .dot{ background:var(--amber); animation:pulse 1s infinite ease-in-out; }
+  .sync-badge.sync-ok{ background:rgba(79,174,121,.15); color:var(--green); }
+  .sync-badge.sync-ok .dot{ background:var(--green); }
+  .sync-badge.sync-error{ background:rgba(193,85,74,.18); color:var(--red); cursor:pointer; }
+  .sync-badge.sync-error .dot{ background:var(--red); }
+  .sync-badge.sync-offline{ background:rgba(140,150,163,.14); color:var(--text-dim); }
+  .sync-badge.sync-offline .dot{ background:var(--text-dim); }
+  @keyframes pulse{ 0%,100%{ opacity:1; } 50%{ opacity:.35; } }
+
+  .pagination{ display:flex; gap:6px; justify-content:center; padding:14px 0; }
+  .pagination button{ padding:5px 11px; font-size:12px; }
+  .pagination button.active{ border-color:var(--amber); color:var(--amber); }
+
+  /* modal */
+  .overlay{
+    position:fixed; inset:0; background:rgba(6,8,11,.7); display:none;
+    align-items:flex-start; justify-content:center; padding:40px 20px; overflow-y:auto; z-index:50;
+  }
+  .overlay.show{ display:flex; }
+  .modal{
+    background:var(--panel); border:1px solid var(--line); border-radius:8px; max-width:760px; width:100%;
+    padding:26px 28px 30px;
+  }
+  .modal-head{ display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:6px; }
+  .modal-head h3{ font-family:'Space Grotesk',sans-serif; margin:0; font-size:20px; }
+  .modal-head .x{ cursor:pointer; color:var(--text-dim); font-size:20px; line-height:1; padding:2px 6px;}
+  .modal-head .x:hover{ color:var(--text); }
+  .modal-sub{ color:var(--text-dim); font-size:12px; margin-bottom:18px; font-family:'IBM Plex Mono',monospace;}
+  .field-grid{ display:grid; grid-template-columns:repeat(3,1fr); gap:10px 16px; margin-bottom:18px; }
+  .field-grid.two{ grid-template-columns:repeat(2,1fr); }
+  .field{ background:var(--panel-2); border:1px solid var(--line); border-radius:var(--radius); padding:8px 10px;}
+  .field .k{ font-size:10px; text-transform:uppercase; letter-spacing:.06em; color:var(--text-dim); margin-bottom:3px;}
+  .field .v{ font-family:'IBM Plex Mono',monospace; font-size:13px; }
+  .section-h{ font-size:11px; text-transform:uppercase; letter-spacing:.08em; color:var(--amber); margin:18px 0 8px; }
+  .opinion-box{ background:var(--panel-2); border-left:3px solid var(--amber-dim); border-radius:var(--radius); padding:10px 12px; font-size:12.5px; line-height:1.6; color:var(--text); }
+  .news-item{ font-size:12px; color:var(--text-dim); padding:4px 0; border-bottom:1px solid var(--line); }
+  .news-item:last-child{ border-bottom:none; }
+  .raw-toggle{ margin-top:16px; }
+  .raw-toggle summary{ cursor:pointer; font-size:11.5px; color:var(--text-dim); }
+  .raw-text{ white-space:pre-wrap; font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--text-dim); background:#0d1116; padding:12px; border-radius:var(--radius); margin-top:8px; max-height:280px; overflow-y:auto; }
+
+  footer{ text-align:center; color:var(--text-dim); font-size:11.5px; margin-top:30px; }
+
+  @media (max-width:900px){
+    .stats-grid{ grid-template-columns:repeat(3,1fr); }
+    .field-grid{ grid-template-columns:repeat(2,1fr); }
+  }
+  @media (max-width:600px){
+    .stats-grid{ grid-template-columns:repeat(2,1fr); }
+    .field-grid{ grid-template-columns:1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div>
+      <div class="brand-eyebrow">Telegram Export Parser</div>
+      <h1>IDX Signal Parser</h1>
+      <div class="sub">Ubah export JSON grup Telegram sinyal saham jadi jurnal trading terstruktur</div>
+    </div>
+    <div class="file-controls" id="fileControls" style="display:none">
+      <span class="filename-tag" id="filenameTag"></span>
+      <button onclick="document.getElementById('fileInput').click()">Ganti File</button>
+      <button onclick="document.getElementById('xlsxInput').click()" title="Upload dashboard export (xlsx) untuk melengkapi status TP HIT/SL HIT/EXPIRED">📊 Upload Hasil (XLSX)</button>
+      <button class="primary" onclick="downloadExcel()">⬇ Export Excel (.xlsx)</button>
+      <button onclick="clearSavedData()" title="Hapus data tersimpan dari browser ini">🗑 Hapus Data</button>
+      <span class="sync-badge sync-offline" id="syncBadge" title="Status sinkronisasi ke cloud"><span class="dot"></span><span id="syncBadgeText">—</span></span>
+      <span class="filename-tag" id="userEmailTag" style="display:none"></span>
+      <button onclick="doLogout()" id="logoutBtn" style="display:none">Keluar</button>
+    </div>
+    <input type="file" id="fileInput" accept=".json">
+    <input type="file" id="xlsxInput" accept=".xlsx,.xls">
+  </header>
+
+  <div id="authScreen" class="auth-wrap">
+    <h2>Masuk untuk sinkronisasi</h2>
+    <p>Login supaya jurnal trading kamu tersimpan online dan bisa dibuka dari HP atau laptop manapun.</p>
+    <div class="auth-tabs">
+      <button id="tabLogin" class="active" onclick="switchAuthTab('login')">Masuk</button>
+      <button id="tabSignup" onclick="switchAuthTab('signup')">Daftar</button>
+    </div>
+    <div class="auth-field">
+      <label>Email</label>
+      <input type="email" id="authEmail" placeholder="kamu@email.com" autocomplete="email">
+    </div>
+    <div class="auth-field">
+      <label>Password</label>
+      <input type="password" id="authPassword" placeholder="minimal 6 karakter" autocomplete="current-password">
+    </div>
+    <button class="primary auth-submit" id="authSubmitBtn" onclick="doAuthSubmit()">Masuk</button>
+    <div class="auth-msg" id="authMsg"></div>
+  </div>
+
+  <div id="emptyState" class="empty" style="display:none">
+    <h2>Upload export Telegram (result.json)</h2>
+    <p>Drag & drop file di sini, atau klik tombol di bawah. Semua parsing berjalan di browser kamu — file tidak diupload ke server manapun.</p>
+    <ol>
+      <li>Telegram Desktop → buka grup/channel → menu (⋮) → <b>Export chat history</b></li>
+      <li>Format: pilih <b>JSON</b>, centang <b>Messages</b> saja sudah cukup</li>
+      <li>Upload file <code>result.json</code> yang dihasilkan di sini</li>
+    </ol>
+    <div><button class="primary" onclick="document.getElementById('fileInput').click()">Pilih File JSON</button></div>
+  </div>
+
+  <div id="dashboard" style="display:none">
+
+    <div class="note" id="dataNote"></div>
+
+    <div class="stats-grid" id="statsGrid"></div>
+
+    <div class="panel">
+      <div class="panel-title">Equity Curve <span class="tag">closed trades</span></div>
+      <div id="equityChart"></div>
+    </div>
+
+    <div class="tabs" id="mainTabs">
+      <div class="tab active" data-tab="trades">Trade Journal</div>
+      <div class="tab" data-tab="regime">Market Regime</div>
+      <div class="tab" data-tab="other">Pesan Lain</div>
+    </div>
+
+    <div id="tab-trades">
+      <div class="filter-bar">
+        <input type="text" id="searchSymbol" placeholder="Cari simbol saham...">
+        <select id="filterType"><option value="">Semua Signal</option><option value="BUY">BUY</option><option value="WATCHLIST">WATCHLIST</option></select>
+        <select id="filterStatus">
+          <option value="">Semua Status</option>
+          <option value="TP HIT">TP HIT</option>
+          <option value="CLOSED (LOCKED)">CLOSED (LOCKED)</option>
+          <option value="SL HIT">SL HIT</option>
+          <option value="EXPIRED">EXPIRED</option>
+          <option value="RUNNING">RUNNING</option>
+          <option value="NO RESULT">NO RESULT</option>
+        </select>
+        <select id="filterSource">
+          <option value="">Semua Sumber</option>
+          <option value="JSON+XLSX">JSON + XLSX (lengkap)</option>
+          <option value="JSON">JSON saja (pending)</option>
+          <option value="XLSX">XLSX saja (di luar cakupan export)</option>
+        </select>
+        <div class="spacer"></div>
+        <span class="count-tag" id="tradeCount"></span>
+        <button onclick="downloadTradesCSV()">⬇ CSV</button>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr>
+            <th>Tanggal</th><th>Simbol</th><th>Signal</th><th>Entry</th><th>SL</th><th>TP</th>
+            <th>Confidence</th><th>Status</th><th>Return</th><th>Sumber</th>
+          </tr></thead>
+          <tbody id="tradesBody"></tbody>
+        </table>
+      </div>
+      <div class="pagination" id="tradesPagination"></div>
+    </div>
+
+    <div id="tab-regime" style="display:none">
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Tanggal</th><th>Prediksi</th><th>Score</th><th>Komentar</th></tr></thead>
+          <tbody id="regimeBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div id="tab-other" style="display:none">
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Tanggal</th><th>Dari</th><th>Pesan</th></tr></thead>
+          <tbody id="otherBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+
+  <footer>Diproses sepenuhnya di browser — tidak ada data yang dikirim ke server.</footer>
+</div>
+
+<div class="overlay" id="modalOverlay" onclick="if(event.target===this) closeModal()">
+  <div class="modal" id="modalContent"></div>
+</div>
+
+<script>
+/* ============================= PARSER ============================= */
+function flatten(text){
+  if (typeof text === 'string') return text;
+  if (!Array.isArray(text)) return '';
+  let out = '';
+  for (const t of text){ if (typeof t==='string') out+=t; else if (t && typeof t.text==='string') out+=t.text; }
+  return out;
+}
+function parseNum(str){
+  if (str===undefined || str===null) return null;
+  let s = String(str).replace(/Rp/gi,'').trim();
+  s = s.replace(/[^\d.,\-+]/g,'');
+  if (s===''||s==='-'||s==='+') return null;
+  const hasComma=s.includes(','), hasDot=s.includes('.');
+  if (hasComma && hasDot){
+    const lc=s.lastIndexOf(','), ld=s.lastIndexOf('.');
+    if (lc>ld) s=s.replace(/\./g,'').replace(',', '.'); else s=s.replace(/,/g,'');
+  } else if (hasComma){
+    const parts=s.split(',');
+    if (parts.length>1 && parts.slice(1).every(p=>p.length===3)) s=parts.join(''); else s=s.replace(',', '.');
+  } else if (hasDot){
+    const parts=s.split('.');
+    if (parts.length>1 && parts.slice(1).every(p=>p.length===3)) s=parts.join('');
+  }
+  const v=parseFloat(s); return isNaN(v)?null:v;
+}
+function match1(re, text){ const m=text.match(re); return m? m[1].trim() : null; }
+
+function parseSignal(text, msgId, date){
+  const row={msg_id:msgId, date, type:'SIGNAL'};
+  const lines=text.split('\n');
+  row.market_warning = match1(/⚠️\s*(.+)/, text);
+  row.symbol = match1(/Saham:\s*(\S+)/, text);
+  const sigM = text.match(/Signal:\s*.*?\b(BUY|WATCHLIST|SELL)\b/);
+  row.signal_type = sigM ? sigM[1] : null;
+  const confM = text.match(/Confidence Score:\s*[^\d]*(\d+)\/10\s*\(([^)]+)\)/);
+  if (confM){ row.confidence_score=parseInt(confM[1],10); row.confidence_label=confM[2].trim(); }
+  const reasonLines = lines.filter(l=>/^\s*[+\-]\d+\s+\S/.test(l));
+  row.confidence_reasons = reasonLines.length ? reasonLines.map(l=>l.trim()).join('; ') : null;
+  row.entry_price = parseNum(match1(/Entry Price:\s*(Rp?[\d.,]+)/, text));
+  let tpM = text.match(/Take Profit:\s*(Rp?[\d.,]+)/);
+  if (tpM){ row.take_profit=parseNum(tpM[1]); }
+  else { tpM = text.match(/TP1:\s*(Rp?[\d.,]+)\s*\(([+\-\d.]+%)\)/); if (tpM){ row.take_profit=parseNum(tpM[1]); row.take_profit_pct=tpM[2]; } }
+  row.target2_price = parseNum(match1(/Target 2[^:]*:\s*(Rp?[\d.,]+)/, text));
+  let slSingle = text.match(/Stop Loss:\s*(Rp?[\d.,]+)/);
+  if (slSingle) row.stop_loss = parseNum(slSingle[1]);
+  const slDefault = text.match(/Default \(ATR\):\s*(Rp?[\d.,]+)\s*\(([+\-\d.]+%)\)/);
+  if (slDefault){ row.stop_loss=parseNum(slDefault[1]); row.stop_loss_pct=slDefault[2]; }
+  const slMod = text.match(/Moderat \(-5%\):\s*(Rp?[\d.,]+)/); if (slMod) row.sl_moderat=parseNum(slMod[1]);
+  const slKons = text.match(/Konservatif \(-3%\):\s*(Rp?[\d.,]+)/); if (slKons) row.sl_konservatif=parseNum(slKons[1]);
+  const macdM = text.match(/MACD:\s*([\-\d.]+)\s*\(Sig:\s*([\-\d.]+)\)\s*\S*\s*(Bullish|Bearish)?/);
+  if (macdM){ row.macd=parseFloat(macdM[1]); row.macd_signal_val=parseFloat(macdM[2]); row.macd_trend=macdM[3]||null; }
+  const rsiM = text.match(/RSI \(14\):\s*([\d.]+)\s*\S*\s*\(?(Overbought|Oversold)?\)?/);
+  if (rsiM){ row.rsi=parseFloat(rsiM[1]); row.rsi_label=rsiM[2]||null; }
+  const emaM = text.match(/EMA 20\/50:\s*(Rp?[\d.,]+)\s*\/\s*(Rp?[\d.,]+)\s*\S*\s*(Bullish|Bearish)?/);
+  if (emaM){ row.ema20=parseNum(emaM[1]); row.ema50=parseNum(emaM[2]); row.ema_trend=emaM[3]||null; }
+  const vwapM = text.match(/VWAP:\s*(Rp?[\d.,]+)\s*\S*\s*(Above|Below)?/);
+  if (vwapM){ row.vwap=parseNum(vwapM[1]); row.vwap_position=vwapM[2]||null; }
+  const bbM = text.match(/(?:Bollinger Bands|BB):\s*\[(Rp?[\d.,]+)\s*-\s*(Rp?[\d.,]+)\]/);
+  if (bbM){ row.bb_lower=parseNum(bbM[1]); row.bb_upper=parseNum(bbM[2]); }
+  const adxM = text.match(/ADX:\s*([\d.]+)\s*(?:\(([^)]+)\))?\s*\S*\s*(Strong|Weak)?/);
+  if (adxM){ row.adx=parseFloat(adxM[1]); row.adx_label=adxM[3]||adxM[2]||null; }
+  const atrM = text.match(/ATR(?:\s*\(Volatilitas\))?:\s*(Rp?[\d.,]+)/); if (atrM) row.atr=parseNum(atrM[1]);
+  row.chart_pattern = match1(/Chart:\s*(.+)/, text);
+  row.candle_pattern = match1(/Candle:\s*(.+)/, text);
+  row.bandar_signal = match1(/Sinyal Bandar:\s*\S*\s*(\S+)/, text);
+  row.smart_money_net = match1(/Smart Money Net:\s*([+\-][\w.,]+\s*\w*)/, text);
+  const buyerBlock = text.match(/Top Buyer:\s*\n([\s\S]*?)(?:\n\s*\n|🔴|Top Seller|📈|💡|$)/);
+  if (buyerBlock){ buyerBlock[1].split('\n').map(l=>l.trim()).filter(Boolean).slice(0,3).forEach((l,i)=>row['top_buyer_'+(i+1)]=l); }
+  const sellerBlock = text.match(/Top Seller:\s*\n([\s\S]*?)(?:\n\s*\n|📈|💡|$)/);
+  if (sellerBlock){ sellerBlock[1].split('\n').map(l=>l.trim()).filter(Boolean).slice(0,3).forEach((l,i)=>row['top_seller_'+(i+1)]=l); }
+  const betaM = text.match(/Beta:\s*([\d.]+)\s*\(([^)]+)\)\s*\|\s*Volatilitas:\s*(\d+)%/);
+  if (betaM){ row.beta=parseFloat(betaM[1]); row.beta_label=betaM[2]; row.volatilitas_pct=parseFloat(betaM[3]); }
+  const fStatus = match1(/Status:\s*\S*\s*(NET BUY ASING|NET SELL ASING|NEUTRAL)/, text); if (fStatus) row.foreign_status=fStatus;
+  const netAsingM = text.match(/Net Asing:\s*([+\-][\w.]+)\s*\(([+\-\d,]+)\s*lot\)/);
+  if (netAsingM){ row.net_asing=netAsingM[1]; row.net_asing_lot=parseNum(netAsingM[2]); }
+  const buySellM = text.match(/Buy:\s*([\d,]+)\s*lot\s*\|\s*Sell:\s*([\d,]+)\s*lot/);
+  if (buySellM){ row.foreign_buy_lot=parseNum(buySellM[1]); row.foreign_sell_lot=parseNum(buySellM[2]); }
+  const partM = text.match(/Partisipasi Asing:\s*(\d+)%/); if (partM) row.partisipasi_asing_pct=parseFloat(partM[1]);
+  const opinionM = text.match(/Analyst Opinion:\s*\n([\s\S]*?)(?:\n\s*\n|📰|🤖|$)/); if (opinionM) row.analyst_opinion=opinionM[1].trim();
+  const newsBlock = text.match(/Berita Terkait:\s*\n([\s\S]*?)(?:🤖|$)/);
+  if (newsBlock){ newsBlock[1].split('\n').map(l=>l.replace(/^•\s*/,'').trim()).filter(Boolean).slice(0,5).forEach((l,i)=>row['news_'+(i+1)]=l); }
+  const verM = text.match(/Powered by Zeta AI\s*(v[\d.]+)?/); row.bot_version = verM && verM[1] ? verM[1] : 'v1';
+  row.raw_text = text;
+  return row;
+}
+function parseResult(text, msgId, date){
+  const row={msg_id:msgId, date};
+  if (text.includes('SIGNAL CONFIRMED')){
+    row.type='TP_HIT'; row.symbol=match1(/Symbol:\s*(\S+)/, text); row.status_text=match1(/Status:\s*\S*\s*(.+)/, text);
+    // two message formats exist in the wild:
+    //  (a) old: "Entry: X -> TP: Y" + "Profit: +Z%"
+    //  (b) new: "Entry: X -> TP1: Y (+Z%)" + "Profit Terkunci: +Z%"
+    const em=text.match(/Entry:\s*(Rp?[\d.,]+)\s*→\s*TP1?:\s*(Rp?[\d.,]+)/); if (em){ row.entry=parseNum(em[1]); row.exit_price=parseNum(em[2]); }
+    row.day_high = parseNum(match1(/Day High:\s*(Rp?[\d.,]+)/, text));
+    const peakM=text.match(/Peak Tertinggi:\s*(Rp?[\d.,]+)\s*\(([+\-\d.]+%)\)/); if (peakM){ row.peak_price=parseNum(peakM[1]); row.peak_pct=peakM[2]; }
+    row.profit_pct = match1(/Profit:\s*([+\-\d.]+%)/, text) || match1(/Profit Terkunci:\s*([+\-\d.]+%)/, text);
+  } else if (text.includes('PROFIT TERKUNCI')){
+    row.type='PROFIT_LOCKED'; row.symbol=match1(/Symbol:\s*(\S+)/, text); row.status_text=match1(/Status:\s*\S*\s*(.+)/, text);
+    const em=text.match(/Entry:\s*(Rp?[\d.,]+)\s*→\s*Exit:\s*(Rp?[\d.,]+)/); if (em){ row.entry=parseNum(em[1]); row.exit_price=parseNum(em[2]); }
+    row.profit_pct = match1(/Profit Terkunci:\s*([+\-\d.]+%)/, text);
+    const peakM=text.match(/Peak Tertinggi:\s*(Rp?[\d.,]+)\s*\(([+\-\d.]+%)\)/); if (peakM){ row.peak_price=parseNum(peakM[1]); row.peak_pct=peakM[2]; }
+  } else if (text.includes('PROFIT TERUS NAIK')){
+    row.type='PROFIT_RUNNING'; row.symbol=match1(/Symbol:\s*(\S+)/, text);
+    row.entry = parseNum(match1(/Entry:\s*(Rp?[\d.,]+)/, text));
+    row.day_high = parseNum(match1(/Day High:\s*(Rp?[\d.,]+)/, text));
+    row.profit_pct = match1(/Profit Sekarang:\s*([+\-\d.]+%)/, text);
+  }
+  row.raw_text = text;
+  return row;
+}
+function parseRegime(text, msgId, date){
+  const row={msg_id:msgId, date, type:'REGIME'};
+  const dm=text.match(/Regime Prediction\s*—\s*(.+)/); row.regime_date = dm? dm[1].trim(): null;
+  const pm=text.match(/Prediksi:\s*(BULLISH|BEARISH|NEUTRAL)\s*\(Score:\s*([\-\d.]+)\)/);
+  if (pm){ row.prediction=pm[1]; row.score=parseFloat(pm[2]); }
+  const components=[]; const compRe=/[🔴🟢⚪]\s*([\w &()\/]+):\s*([+\-\d.]+%)\s*\((\d+)%\)/g; let cm;
+  while ((cm=compRe.exec(text))!==null) components.push(cm[1].trim()+': '+cm[2]+' (bobot '+cm[3]+'%)');
+  row.components = components.join(' | ') || null;
+  const commentM=text.match(/💬\s*(.+)/); row.commentary = commentM? commentM[1].trim() : null;
+  row.raw_text = text;
+  return row;
+}
+function classify(text){
+  if (text.includes('ZETA IDX STOCK SIGNAL')) return 'signal';
+  if (text.includes('SIGNAL CONFIRMED')||text.includes('PROFIT TERKUNCI')||text.includes('PROFIT TERUS NAIK')) return 'result';
+  if (text.includes('Regime Prediction')) return 'regime';
+  return 'other';
+}
+function parseTelegramExport(data){
+  const signals=[], results=[], regimes=[], others=[];
+  for (const m of data.messages){
+    if (m.type!=='message') continue;
+    const text=flatten(m.text);
+    if (!text || !text.trim()) continue;
+    const cat=classify(text);
+    if (cat==='signal') signals.push(parseSignal(text,m.id,m.date));
+    else if (cat==='result') results.push(parseResult(text,m.id,m.date));
+    else if (cat==='regime') regimes.push(parseRegime(text,m.id,m.date));
+    else others.push({msg_id:m.id, date:m.date, from:m.from||'', text});
+  }
+  return {signals, results, regimes, others};
+}
+
+/* match each signal to its outcome by symbol + date window */
+function matchTrades(signals, results){
+  const RUNNING_FRESH_DAYS = 3; // sinyal terakhir tanpa laporan apa pun dianggap RUNNING hanya jika masih dalam N hari terakhir dari data
+  let maxKnownDate = 0;
+  signals.forEach(s=>{ const t=new Date(s.date).getTime(); if (t>maxKnownDate) maxKnownDate=t; });
+  results.forEach(r=>{ const t=new Date(r.date).getTime(); if (t>maxKnownDate) maxKnownDate=t; });
+
+  const bySymbol={};
+  signals.forEach(s=>{ (bySymbol[s.symbol]=bySymbol[s.symbol]||{sig:[],res:[]}).sig.push(s); });
+  results.forEach(r=>{ if(!r.symbol) return; (bySymbol[r.symbol]=bySymbol[r.symbol]||{sig:[],res:[]}).res.push(r); });
+  const trades=[];
+  for (const symbol in bySymbol){
+    const sigs = bySymbol[symbol].sig.slice().sort((a,b)=>new Date(a.date)-new Date(b.date));
+    const resArr = bySymbol[symbol].res.slice().sort((a,b)=>new Date(a.date)-new Date(b.date));
+    sigs.forEach((s, idx)=>{
+      const sigDate = new Date(s.date);
+      const nextSigDate = idx+1 < sigs.length ? new Date(sigs[idx+1].date) : null;
+      const candidates = resArr.filter(r=>{
+        const rd = new Date(r.date);
+        return rd >= sigDate && (!nextSigDate || rd < nextSigDate);
+      });
+      let status='NO RESULT', return_pct=null, result_ref=null;
+      const terminal = candidates.find(r=>r.type==='TP_HIT'||r.type==='PROFIT_LOCKED');
+      const running = candidates.find(r=>r.type==='PROFIT_RUNNING');
+      if (terminal){ status = terminal.type==='TP_HIT' ? 'TP HIT' : 'CLOSED (LOCKED)'; return_pct=terminal.profit_pct; result_ref=terminal; }
+      else if (running){ status='RUNNING'; return_pct=running.profit_pct; result_ref=running; }
+      else if (!nextSigDate){
+        const ageDays = (maxKnownDate - sigDate.getTime()) / 86400000;
+        status = ageDays <= RUNNING_FRESH_DAYS ? 'RUNNING' : 'NO RESULT';
+      }
+      trades.push(Object.assign({}, s, {status, return_pct, result_ref, source:'JSON'}));
+    });
+  }
+  return trades.sort((a,b)=>new Date(b.date)-new Date(a.date));
+}
+
+/* ============================= APP STATE ============================= */
+let STATE = { signals:[], results:[], regimes:[], others:[], trades:[], filtered:[], page:1, pageSize:25, filename:'' };
+
+/* ============================= PERSISTENCE (IndexedDB) =============================
+   Data disimpan lokal di browser (bukan di server manapun) supaya tidak perlu upload
+   ulang result.json setiap kali halaman dibuka. Pakai IndexedDB (bukan localStorage)
+   karena data hasil parse bisa beberapa MB, di atas batas aman localStorage. */
+const DB_NAME = 'idx_signal_parser_db';
+const STORE_NAME = 'state';
+const STATE_KEY = 'current';
+
+function openDB(){
+  return new Promise((resolve, reject)=>{
+    if (!window.indexedDB){ reject(new Error('IndexedDB tidak didukung browser ini')); return; }
+    const req = indexedDB.open(DB_NAME, 1);
+    req.onupgradeneeded = ()=>{ req.result.createObjectStore(STORE_NAME); };
+    req.onsuccess = ()=> resolve(req.result);
+    req.onerror = ()=> reject(req.error);
+  });
+}
+
+async function saveStateToDB(){
+  try{
+    const db = await openDB();
+    const payload = { signals:STATE.signals, results:STATE.results, regimes:STATE.regimes,
+                       others:STATE.others, trades:STATE.trades, filename:STATE.filename, savedAt:Date.now() };
+    await new Promise((resolve, reject)=>{
+      const tx = db.transaction(STORE_NAME, 'readwrite');
+      tx.objectStore(STORE_NAME).put(payload, STATE_KEY);
+      tx.oncomplete = resolve; tx.onerror = ()=>reject(tx.error);
+    });
+  } catch(err){
+    console.warn('Gagal menyimpan data ke browser:', err);
+  }
+}
+
+async function loadStateFromDB(){
+  try{
+    const db = await openDB();
+    return await new Promise((resolve, reject)=>{
+      const tx = db.transaction(STORE_NAME, 'readonly');
+      const req = tx.objectStore(STORE_NAME).get(STATE_KEY);
+      req.onsuccess = ()=> resolve(req.result || null);
+      req.onerror = ()=> reject(req.error);
+    });
+  } catch(err){
+    console.warn('Gagal membaca data tersimpan:', err);
+    return null;
+  }
+}
+
+async function clearSavedData(){
+  if (!confirm('Hapus data tersimpan (lokal & cloud)? File asli tidak terpengaruh, kamu bisa upload ulang kapan saja.')) return;
+  try{
+    const db = await openDB();
+    await new Promise((resolve, reject)=>{
+      const tx = db.transaction(STORE_NAME, 'readwrite');
+      tx.objectStore(STORE_NAME).delete(STATE_KEY);
+      tx.oncomplete = resolve; tx.onerror = ()=>reject(tx.error);
+    });
+  } catch(err){ console.warn('Gagal menghapus data lokal:', err); }
+  try{
+    if (sb){
+      const { data: { session } } = await sb.auth.getSession();
+      if (session){ await sb.from('trades_data').delete().eq('user_id', session.user.id); }
+    }
+  } catch(err){ console.warn('Gagal menghapus data cloud:', err); }
+  STATE = { signals:[], results:[], regimes:[], others:[], trades:[], filtered:[], page:1, pageSize:25, filename:'' };
+  document.getElementById('dashboard').style.display='none';
+  document.getElementById('emptyState').style.display='block';
+  updateSyncBadge('offline','Belum ada data');
+}
+
+async function restoreIfSaved(){
+  const saved = await loadStateFromDB();
+  if (!saved || !saved.trades || !saved.trades.length) return false;
+  STATE.signals=saved.signals; STATE.results=saved.results; STATE.regimes=saved.regimes;
+  STATE.others=saved.others; STATE.trades=saved.trades; STATE.filename=saved.filename;
+  STATE.filtered = STATE.trades.slice();
+  renderAll();
+  return true;
+}
+
+/* ============================= CLOUD SYNC (Supabase) =============================
+   Login supaya jurnal tersimpan online (tabel trades_data, 1 baris per user,
+   dilindungi row-level security jadi cuma pemilik akun yang bisa baca/tulis). */
+const SUPABASE_URL = 'https://gfxhtpqzebxycijdnpjp.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_BXkSOULyV06I6N6DhIIAdw_TJXQUGOS';
+let sb = null;
+try{ sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY); }
+catch(err){ console.warn('Gagal load Supabase client:', err); }
+
+let authMode = 'login';
+function switchAuthTab(mode){
+  authMode = mode;
+  document.getElementById('tabLogin').classList.toggle('active', mode==='login');
+  document.getElementById('tabSignup').classList.toggle('active', mode==='signup');
+  document.getElementById('authSubmitBtn').textContent = mode==='login' ? 'Masuk' : 'Daftar';
+  document.getElementById('authMsg').textContent = '';
+  document.getElementById('authMsg').className = 'auth-msg';
+}
+
+async function doAuthSubmit(){
+  const email = document.getElementById('authEmail').value.trim();
+  const password = document.getElementById('authPassword').value;
+  const msgEl = document.getElementById('authMsg');
+  msgEl.className = 'auth-msg'; msgEl.textContent = '';
+  if (!email || !password){ msgEl.textContent = 'Isi email dan password dulu.'; msgEl.className='auth-msg err'; return; }
+  if (!sb){ msgEl.textContent = 'Layanan login gagal dimuat. Cek koneksi internet.'; msgEl.className='auth-msg err'; return; }
+
+  const submitBtn = document.getElementById('authSubmitBtn');
+  submitBtn.disabled = true; submitBtn.textContent = '...';
+  try{
+    if (authMode === 'login'){
+      const { error } = await sb.auth.signInWithPassword({ email, password });
+      if (error) throw error;
+      await onAuthReady();
+    } else {
+      const { data, error } = await sb.auth.signUp({ email, password });
+      if (error) throw error;
+      if (data.session){
+        await onAuthReady();
+      } else {
+        msgEl.textContent = 'Akun dibuat. Cek email kamu untuk verifikasi, lalu login.';
+        msgEl.className = 'auth-msg ok';
+        switchAuthTab('login');
+      }
+    }
+  } catch(err){
+    msgEl.textContent = err.message || 'Gagal, coba lagi.';
+    msgEl.className = 'auth-msg err';
+  } finally{
+    submitBtn.disabled = false;
+    submitBtn.textContent = authMode==='login' ? 'Masuk' : 'Daftar';
+  }
+}
+
+async function doLogout(){
+  if (sb) await sb.auth.signOut();
+  STATE = { signals:[], results:[], regimes:[], others:[], trades:[], filtered:[], page:1, pageSize:25, filename:'' };
+  document.getElementById('dashboard').style.display='none';
+  document.getElementById('fileControls').style.display='none';
+  document.getElementById('emptyState').style.display='none';
+  document.getElementById('logoutBtn').style.display='none';
+  document.getElementById('userEmailTag').style.display='none';
+  document.getElementById('authScreen').style.display='block';
+  updateSyncBadge('offline','Belum login');
+}
+
+function updateSyncBadge(state, msg){
+  const el = document.getElementById('syncBadge');
+  const txt = document.getElementById('syncBadgeText');
+  if (!el || !txt) return;
+  el.className = 'sync-badge sync-'+state;
+  const now = new Date().toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit'});
+  if (state==='syncing') txt.textContent = 'Menyimpan ke cloud...';
+  else if (state==='ok') txt.textContent = '☁ Tersimpan · '+now;
+  else if (state==='error') txt.textContent = '⚠ Gagal sync — klik retry';
+  else txt.textContent = msg || 'Offline';
+  el.title = state==='error' ? 'Klik untuk coba sync ulang' : 'Status sinkronisasi ke cloud';
+  el.onclick = state==='error' ? saveStateToSupabase : null;
+}
+
+async function saveStateToSupabase(){
+  if (!sb){ updateSyncBadge('offline','Supabase tidak tersedia'); return; }
+  try{
+    const { data: { session } } = await sb.auth.getSession();
+    if (!session){ updateSyncBadge('offline','Belum login'); return; }
+    updateSyncBadge('syncing');
+    const payload = { signals:STATE.signals, results:STATE.results, regimes:STATE.regimes,
+                       others:STATE.others, trades:STATE.trades, filename:STATE.filename };
+    const { error } = await sb.from('trades_data').upsert({
+      user_id: session.user.id, payload, updated_at: new Date().toISOString()
+    });
+    if (error){ console.warn('Gagal sync ke cloud:', error.message); updateSyncBadge('error'); return; }
+    updateSyncBadge('ok');
+  } catch(err){ console.warn('Gagal sync ke cloud:', err); updateSyncBadge('error'); }
+}
+
+async function loadStateFromSupabase(){
+  if (!sb) return false;
+  try{
+    const { data: { session } } = await sb.auth.getSession();
+    if (!session) return false;
+    updateSyncBadge('syncing');
+    const { data, error } = await sb.from('trades_data').select('payload, updated_at').eq('user_id', session.user.id).maybeSingle();
+    if (error){ console.warn('Gagal ambil data cloud:', error.message); updateSyncBadge('error'); return false; }
+    if (!data || !data.payload || !data.payload.trades || !data.payload.trades.length){ updateSyncBadge('offline','Belum ada data cloud'); return false; }
+    const p = data.payload;
+    STATE.signals=p.signals; STATE.results=p.results; STATE.regimes=p.regimes;
+    STATE.others=p.others; STATE.trades=p.trades; STATE.filename=p.filename;
+    STATE.filtered = STATE.trades.slice();
+    renderAll();
+    saveStateToDB(); // keep local cache warm too
+    updateSyncBadge('ok');
+    return true;
+  } catch(err){ console.warn('Gagal ambil data cloud:', err); updateSyncBadge('error'); return false; }
+}
+
+async function onAuthReady(){
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session){
+    document.getElementById('authScreen').style.display='block';
+    document.getElementById('logoutBtn').style.display='none';
+    document.getElementById('userEmailTag').style.display='none';
+    updateSyncBadge('offline','Belum login');
+    return;
+  }
+  document.getElementById('authScreen').style.display='none';
+  document.getElementById('logoutBtn').style.display='inline-block';
+  document.getElementById('userEmailTag').style.display='inline-block';
+  document.getElementById('userEmailTag').textContent = session.user.email;
+  document.getElementById('fileControls').style.display='flex';
+
+  const gotCloud = await loadStateFromSupabase();
+  if (!gotCloud){
+    const gotLocal = await restoreIfSaved();
+    if (!gotLocal){ document.getElementById('emptyState').style.display='block'; }
+  }
+}
+
+async function initApp(){
+  if (!sb){
+    // Supabase gagal dimuat (misal offline) — tetap izinkan pakai versi lokal (IndexedDB) saja.
+    document.getElementById('authScreen').style.display='none';
+    document.getElementById('fileControls').style.display='flex';
+    updateSyncBadge('offline','Supabase tidak tersedia (cek koneksi)');
+    const gotLocal = await restoreIfSaved();
+    if (!gotLocal){ document.getElementById('emptyState').style.display='block'; }
+    return;
+  }
+  sb.auth.onAuthStateChange((_event, _session)=>{ /* no-op, we drive flow manually via onAuthReady */ });
+  await onAuthReady();
+}
+
+const fileInput = document.getElementById('fileInput');
+const emptyState = document.getElementById('emptyState');
+
+fileInput.addEventListener('change', e=>{ if (e.target.files[0]) handleFile(e.target.files[0]); });
+emptyState.addEventListener('dragover', e=>{ e.preventDefault(); emptyState.classList.add('drag'); });
+emptyState.addEventListener('dragleave', ()=> emptyState.classList.remove('drag'));
+emptyState.addEventListener('drop', e=>{
+  e.preventDefault(); emptyState.classList.remove('drag');
+  if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
+});
+
+function handleFile(file){
+  STATE.filename = file.name;
+  const reader = new FileReader();
+  reader.onload = ev=>{
+    try{
+      const data = JSON.parse(ev.target.result);
+      const { signals, results, regimes, others } = parseTelegramExport(data);
+      STATE.signals=signals; STATE.results=results; STATE.regimes=regimes; STATE.others=others;
+      STATE.trades = matchTrades(signals, results);
+      STATE.filtered = STATE.trades.slice();
+      renderAll();
+      saveStateToDB();
+      saveStateToSupabase();
+    } catch(err){
+      alert('Gagal parsing file. Pastikan ini adalah result.json hasil export Telegram (Messages, format JSON).\n\n'+err.message);
+    }
+  };
+  reader.readAsText(file);
+}
+
+/* ============================= MERGE DENGAN DASHBOARD XLSX =============================
+   Telegram cuma posting update profit (TP HIT/LOCKED/RUNNING) secara publik, jadi status
+   SL HIT dan EXPIRED tidak pernah kelihatan di JSON. File xlsx (scrape dashboard web) punya
+   status final yang sebenarnya. Digabung pakai kunci: symbol + tanggal sinyal (tie-break
+   entry price kalau ada >1 sinyal simbol yang sama di tanggal yang sama). */
+function normalizeXlsxDate(v){
+  if (v==null) return null;
+  if (v instanceof Date && !isNaN(v)) return v.toISOString().slice(0,10);
+  if (typeof v === 'number'){ const d = new Date(Math.round((v-25569)*86400*1000)); return isNaN(d) ? null : d.toISOString().slice(0,10); }
+  const s = String(v).trim();
+  const d = new Date(s);
+  if (!isNaN(d)) return d.toISOString().slice(0,10);
+  const m = s.match(/(\d{4})-(\d{2})-(\d{2})/);
+  return m ? m[0] : null;
+}
+
+function parseXlsxDashboard(workbook){
+  const sheet = workbook.Sheets[workbook.SheetNames[0]];
+  const rows = XLSX.utils.sheet_to_json(sheet, {header:1, raw:true, defval:null});
+  const out = [];
+  for (let i=1;i<rows.length;i++){
+    const r = rows[i];
+    if (!r || r[1]==null || String(r[1]).trim()==='') continue;
+    const date = normalizeXlsxDate(r[0]);
+    if (!date) continue;
+    out.push({
+      _uid: i,
+      date,
+      symbol: String(r[1]).trim().toUpperCase(),
+      decision: r[2] || null,
+      entry: parseNum(r[3]),
+      sl: parseNum(r[4]),
+      tp: parseNum(r[5]),
+      status: r[6] ? String(r[6]).trim() : null,
+      return_pct: (r[7]!=null ? String(r[7]).trim() : null) || (r[8]!=null ? String(r[8]).trim() : null)
+    });
+  }
+  return out;
+}
+
+function mergeWithXlsxData(trades, xlsxRows){
+  const xlsxByKey = {};
+  xlsxRows.forEach(r=>{
+    const k = r.symbol+'|'+r.date;
+    (xlsxByKey[k]=xlsxByKey[k]||[]).push(r);
+  });
+  const usedUid = new Set();
+  const merged = trades.map(t=>{
+    const k = (t.symbol||'').toUpperCase()+'|'+String(t.date).slice(0,10);
+    const candidates = (xlsxByKey[k]||[]).filter(r=>!usedUid.has(r._uid));
+    let match=null;
+    if (candidates.length===1) match=candidates[0];
+    else if (candidates.length>1){
+      match = candidates.slice().sort((a,b)=>
+        Math.abs((a.entry||0)-(t.entry_price||0)) - Math.abs((b.entry||0)-(t.entry_price||0))
+      )[0];
+    }
+    if (!match) return Object.assign({}, t, { source: t.source || 'JSON' });
+    usedUid.add(match._uid);
+    return Object.assign({}, t, {
+      source: 'JSON+XLSX',
+      status: match.status || t.status,
+      return_pct: match.return_pct || t.return_pct
+    });
+  });
+  const leftover = xlsxRows.filter(r=>!usedUid.has(r._uid)).map(r=>({
+    date: r.date, symbol: r.symbol, signal_type: r.decision || null,
+    entry_price: r.entry, stop_loss: r.sl, take_profit: r.tp,
+    confidence_score: null, status: r.status, return_pct: r.return_pct,
+    source: 'XLSX'
+  }));
+  return merged.concat(leftover).sort((a,b)=> new Date(b.date)-new Date(a.date));
+}
+
+function handleXlsxFile(file){
+  if (!STATE.trades.length){ alert('Upload result.json (export Telegram) dulu, baru upload file hasil XLSX ini.'); return; }
+  const reader = new FileReader();
+  reader.onload = ev=>{
+    try{
+      const wb = XLSX.read(ev.target.result, {type:'array', cellDates:true});
+      const xlsxRows = parseXlsxDashboard(wb);
+      if (!xlsxRows.length){ alert('Tidak ada baris valid ditemukan di file xlsx ini. Pastikan formatnya sesuai dashboard (tanggal, simbol, decision, entry, sl, tp, status, return%).'); return; }
+      STATE.trades = mergeWithXlsxData(STATE.trades, xlsxRows);
+      STATE.filtered = STATE.trades.slice();
+      renderAll();
+      saveStateToDB();
+      saveStateToSupabase();
+    } catch(err){
+      alert('Gagal membaca file xlsx.\n\n'+err.message);
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+document.getElementById('xlsxInput').addEventListener('change', e=>{ if (e.target.files[0]) handleXlsxFile(e.target.files[0]); });
+
+initApp();
+
+function fmtRp(v){ return v==null ? '—' : 'Rp'+Math.round(v).toLocaleString('id-ID'); }
+function fmtDate(d){ if(!d) return '—'; const dt=new Date(d); return dt.toLocaleDateString('id-ID',{year:'numeric',month:'2-digit',day:'2-digit'}); }
+function pctNum(s){ if (s==null) return null; const v=parseFloat(String(s).replace('%','').replace(',', '.')); return isNaN(v)?null:v; }
+
+function renderAll(){
+  document.getElementById('emptyState').style.display='none';
+  document.getElementById('dashboard').style.display='block';
+  document.getElementById('fileControls').style.display='flex';
+  document.getElementById('filenameTag').textContent = STATE.filename;
+
+  const srcCounts = STATE.trades.reduce((a,t)=>{ a[t.source]=(a[t.source]||0)+1; return a; }, {});
+  const hasXlsx = (srcCounts['JSON+XLSX']||0) + (srcCounts['XLSX']||0) > 0;
+  document.getElementById('dataNote').innerHTML = hasXlsx
+    ? '<b>Catatan:</b> Data digabung dari 2 sumber — Telegram export (konteks teknikal: MACD/RSI/EMA/dll) dan dashboard XLSX (status final TP HIT/SL HIT/EXPIRED). '+
+      'Rincian: <b>'+(srcCounts['JSON+XLSX']||0)+'</b> trade lengkap (JSON+XLSX), <b>'+(srcCounts['JSON']||0)+'</b> trade JSON saja (belum ada hasil final / pending), '+
+      '<b>'+(srcCounts['XLSX']||0)+'</b> trade XLSX saja (di luar cakupan tanggal export Telegram, tanpa data teknikal). '+
+      'Win rate di kartu statistik dihitung dari trade yang statusnya sudah final (TP HIT/SL HIT), exclude EXPIRED &amp; yang masih pending. '+
+      '<br><b>Data tersimpan otomatis</b> ke akun kamu (online, via Supabase) dan juga di-cache lokal di browser ini. Klik "🗑 Hapus Data" untuk membersihkan.'
+    : '<b>Catatan:</b> Channel Telegram ini hanya memposting update saat sinyal <i>profit</i> (TP HIT / Profit Terkunci / Profit Terus Naik). '+
+      'Tidak ditemukan pesan Stop-Loss-Hit atau Expired secara publik — jadi sinyal berstatus <span class="amber-txt">NO RESULT</span> berarti belum ada '+
+      'update publik, bukan berarti gagal. Klik <b>"📊 Upload Hasil (XLSX)"</b> untuk melengkapi dengan status final (termasuk SL HIT/EXPIRED) dari dashboard.'+
+      '<br><b>Data tersimpan otomatis</b> ke akun kamu (online, via Supabase) dan juga di-cache lokal di browser ini. Klik "🗑 Hapus Data" untuk membersihkan.';
+
+  renderStats();
+  renderEquityChart();
+  renderTradesTable();
+  renderRegime();
+  renderOther();
+  setupFilters();
+  setupTabs();
+}
+
+function renderStats(){
+  const trades = STATE.trades;
+  const withReturn = trades.map(t=>({...t, pct: pctNum(t.return_pct)})).filter(t=>t.pct!=null);
+  const totalReturn = withReturn.reduce((a,t)=>a+t.pct,0);
+  const avgReturn = withReturn.length ? totalReturn/withReturn.length : 0;
+  const best = withReturn.reduce((a,t)=> (!a || t.pct>a.pct) ? t : a, null);
+  const worst = withReturn.reduce((a,t)=> (!a || t.pct<a.pct) ? t : a, null);
+  const statusCounts = trades.reduce((acc,t)=>{ acc[t.status]=(acc[t.status]||0)+1; return acc; }, {});
+  const hasStatusCount = (statusCounts['TP HIT']||0)+(statusCounts['CLOSED (LOCKED)']||0)+(statusCounts['RUNNING']||0)+(statusCounts['SL HIT']||0)+(statusCounts['EXPIRED']||0);
+  const hasXlsx = trades.some(t=>t.source==='JSON+XLSX'||t.source==='XLSX');
+  const wins = (statusCounts['TP HIT']||0)+(statusCounts['CLOSED (LOCKED)']||0);
+  const losses = statusCounts['SL HIT']||0;
+  const decided = wins+losses;
+  const winRate = decided ? (wins/decided*100) : null;
+
+  const cards = [
+    { label:'Total Sinyal', value: STATE.signals.length, sub: STATE.signals.filter(s=>s.signal_type==='BUY').length+' BUY · '+STATE.signals.filter(s=>s.signal_type==='WATCHLIST').length+' WATCHLIST' },
+    { label:'Ada Update Hasil', value: hasStatusCount, sub: (statusCounts['TP HIT']||0)+' TP · '+(statusCounts['SL HIT']||0)+' SL · '+(statusCounts['CLOSED (LOCKED)']||0)+' LOCKED · '+(statusCounts['EXPIRED']||0)+' EXPIRED · '+(statusCounts['RUNNING']||0)+' RUNNING' },
+    hasXlsx
+      ? { label:'Win Rate (TP vs SL, real)', value: winRate!=null ? winRate.toFixed(1)+'%' : '—', cls: winRate!=null && winRate>=50 ? 'pos':'neg', sub: wins+' menang · '+losses+' kalah (exclude EXPIRED/pending)' }
+      : { label:'Total Return (tercatat)', value: (totalReturn>=0?'+':'')+totalReturn.toFixed(1)+'%', cls: totalReturn>=0?'pos':'neg', sub: withReturn.length+' trade dengan update' },
+    { label:'Avg Return / Trade', value: (avgReturn>=0?'+':'')+avgReturn.toFixed(1)+'%', cls: avgReturn>=0?'pos':'neg', sub:'Per trade dengan hasil' },
+    { label:'Best Trade', value: best ? best.symbol+' '+(best.pct>=0?'+':'')+best.pct.toFixed(1)+'%' : '—', cls:'pos', sub: best? fmtDate(best.date):'' },
+    { label:'Worst Trade', value: worst ? worst.symbol+' '+(worst.pct>=0?'+':'')+worst.pct.toFixed(1)+'%' : '—', cls: worst && worst.pct<0 ? 'neg':'pos', sub: worst? fmtDate(worst.date):'' },
+  ];
+  document.getElementById('statsGrid').innerHTML = cards.map(c=>
+    '<div class="stat-card"><div class="stat-label">'+c.label+'</div><div class="stat-value '+(c.cls||'')+'">'+c.value+'</div><div class="stat-sub">'+(c.sub||'')+'</div></div>'
+  ).join('');
+}
+
+function renderEquityChart(){
+  const trades = STATE.trades
+    .map(t=>({date:t.date, pct: pctNum(t.return_pct)}))
+    .filter(t=>t.pct!=null)
+    .sort((a,b)=>new Date(a.date)-new Date(b.date));
+  const el = document.getElementById('equityChart');
+  if (!trades.length){ el.innerHTML = '<div style="color:var(--text-dim);font-size:12.5px;padding:20px 0;">Belum ada data untuk ditampilkan.</div>'; return; }
+  let cum=0; const pts = trades.map(t=>{ cum+=t.pct; return cum; });
+  const W=1100, H=220, pad=30;
+  const min=Math.min(0,...pts), max=Math.max(0,...pts);
+  const range = (max-min)||1;
+  const stepX = (W-2*pad)/Math.max(1,pts.length-1);
+  const xy = pts.map((v,i)=>[pad+i*stepX, H-pad-((v-min)/range)*(H-2*pad)]);
+  const path = xy.map((p,i)=> (i===0?'M':'L')+p[0].toFixed(1)+','+p[1].toFixed(1)).join(' ');
+  const zeroY = H-pad-((0-min)/range)*(H-2*pad);
+  const last = pts[pts.length-1];
+  const color = last>=0 ? 'var(--green)' : 'var(--red)';
+  el.innerHTML = '<svg viewBox="0 0 '+W+' '+H+'" width="100%" height="220" preserveAspectRatio="none">'+
+    '<line x1="'+pad+'" y1="'+zeroY+'" x2="'+(W-pad)+'" y2="'+zeroY+'" stroke="var(--line)" stroke-dasharray="4 3"/>'+
+    '<path d="'+path+'" fill="none" stroke="'+color+'" stroke-width="2"/>'+
+    '<circle cx="'+xy[xy.length-1][0]+'" cy="'+xy[xy.length-1][1]+'" r="3.5" fill="'+color+'"/>'+
+    '</svg>'+
+    '<div style="display:flex;justify-content:space-between;color:var(--text-dim);font-size:11px;margin-top:4px;">'+
+    '<span>'+fmtDate(trades[0].date)+'</span><span class="mono" style="color:'+color+'">Kumulatif: '+(last>=0?'+':'')+last.toFixed(1)+'%</span><span>'+fmtDate(trades[trades.length-1].date)+'</span></div>';
+}
+
+function statusBadge(status){
+  const map = { 'TP HIT':'badge-tp', 'CLOSED (LOCKED)':'badge-locked', 'RUNNING':'badge-running', 'NO RESULT':'badge-none', 'SL HIT':'badge-slhit', 'EXPIRED':'badge-expired' };
+  return '<span class="badge '+(map[status]||'badge-none')+'">'+status+'</span>';
+}
+function typeBadge(t){ return '<span class="badge '+(t==='BUY'?'badge-buy':'badge-watchlist')+'">'+t+'</span>'; }
+function sourceBadge(src){
+  const map = { 'JSON+XLSX':['badge-src-both','JSON+XLSX'], 'JSON':['badge-src-json','JSON'], 'XLSX':['badge-src-xlsx','XLSX'] };
+  const [cls,label] = map[src] || ['badge-none', src||'—'];
+  return '<span class="badge '+cls+'">'+label+'</span>';
+}
+
+function applyFilters(){
+  const q = document.getElementById('searchSymbol').value.trim().toUpperCase();
+  const type = document.getElementById('filterType').value;
+  const status = document.getElementById('filterStatus').value;
+  const source = document.getElementById('filterSource').value;
+  STATE.filtered = STATE.trades.filter(t=>{
+    if (q && !(t.symbol||'').includes(q)) return false;
+    if (type && t.signal_type!==type) return false;
+    if (status && t.status!==status) return false;
+    if (source && t.source!==source) return false;
+    return true;
+  });
+  STATE.page = 1;
+  renderTradesTable();
+}
+
+function setupFilters(){
+  document.getElementById('searchSymbol').oninput = applyFilters;
+  document.getElementById('filterType').onchange = applyFilters;
+  document.getElementById('filterStatus').onchange = applyFilters;
+  document.getElementById('filterSource').onchange = applyFilters;
+  STATE.filtered = STATE.trades.slice();
+}
+
+function setupTabs(){
+  document.querySelectorAll('.tab').forEach(tab=>{
+    tab.onclick = ()=>{
+      document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+      tab.classList.add('active');
+      ['trades','regime','other'].forEach(id=> document.getElementById('tab-'+id).style.display = (id===tab.dataset.tab) ? 'block':'none');
+    };
+  });
+}
+
+function renderTradesTable(){
+  const list = STATE.filtered;
+  document.getElementById('tradeCount').textContent = list.length+' trade';
+  const pageSize = STATE.pageSize;
+  const totalPages = Math.max(1, Math.ceil(list.length/pageSize));
+  STATE.page = Math.min(STATE.page, totalPages);
+  const start = (STATE.page-1)*pageSize;
+  const pageItems = list.slice(start, start+pageSize);
+
+  document.getElementById('tradesBody').innerHTML = pageItems.map((t,i)=>{
+    const idx = STATE.trades.indexOf(t);
+    const pct = pctNum(t.return_pct);
+    const pctClass = pct==null ? '' : (pct>=0?'pos':'neg');
+    return '<tr onclick="openModal('+idx+')">'+
+      '<td class="mono">'+fmtDate(t.date)+'</td>'+
+      '<td class="symbol">'+(t.symbol||'—')+'</td>'+
+      '<td>'+typeBadge(t.signal_type||'—')+'</td>'+
+      '<td class="mono">'+fmtRp(t.entry_price)+'</td>'+
+      '<td class="mono">'+fmtRp(t.stop_loss)+'</td>'+
+      '<td class="mono">'+fmtRp(t.take_profit)+'</td>'+
+      '<td class="mono">'+(t.confidence_score!=null ? t.confidence_score+'/10' : '—')+'</td>'+
+      '<td>'+statusBadge(t.status)+'</td>'+
+      '<td class="mono '+pctClass+'" style="font-weight:600">'+(t.return_pct||'—')+'</td>'+
+      '<td>'+sourceBadge(t.source)+'</td>'+
+      '</tr>';
+  }).join('');
+
+  const pag = document.getElementById('tradesPagination');
+  let html='';
+  html += '<button '+(STATE.page===1?'disabled':'')+' onclick="gotoPage('+(STATE.page-1)+')">‹</button>';
+  for (let p=1;p<=totalPages;p++){
+    if (p===1||p===totalPages||Math.abs(p-STATE.page)<=1) html += '<button class="'+(p===STATE.page?'active':'')+'" onclick="gotoPage('+p+')">'+p+'</button>';
+    else if (Math.abs(p-STATE.page)===2) html += '<span style="color:var(--text-dim);padding:5px 2px;">…</span>';
+  }
+  html += '<button '+(STATE.page===totalPages?'disabled':'')+' onclick="gotoPage('+(STATE.page+1)+')">›</button>';
+  pag.innerHTML = html;
+}
+function gotoPage(p){ STATE.page=p; renderTradesTable(); }
+
+function renderRegime(){
+  document.getElementById('regimeBody').innerHTML = STATE.regimes.slice().sort((a,b)=>new Date(b.date)-new Date(a.date)).map(r=>{
+    const cls = r.prediction==='BULLISH'?'pos': r.prediction==='BEARISH'?'neg':'';
+    return '<tr><td class="mono">'+fmtDate(r.date)+'</td><td class="'+cls+'" style="font-weight:600">'+(r.prediction||'—')+'</td>'+
+      '<td class="mono">'+(r.score!=null?r.score:'—')+'</td><td style="white-space:normal;max-width:520px;color:var(--text-dim);font-size:12px;">'+(r.commentary||'—')+'</td></tr>';
+  }).join('');
+}
+function renderOther(){
+  document.getElementById('otherBody').innerHTML = STATE.others.map(o=>
+    '<tr><td class="mono">'+fmtDate(o.date)+'</td><td>'+o.from+'</td><td style="white-space:normal;max-width:600px;">'+o.text.replace(/</g,'&lt;')+'</td></tr>'
+  ).join('');
+}
+
+/* ============================= MODAL ============================= */
+function fieldHtml(k,v){ return v==null||v==='' ? '' : '<div class="field"><div class="k">'+k+'</div><div class="v">'+v+'</div></div>'; }
+
+function openModal(idx){
+  const t = STATE.trades[idx];
+  const pct = pctNum(t.return_pct);
+  const pctCls = pct==null?'':(pct>=0?'pos':'neg');
+  let html = '<div class="modal-head"><h3>'+t.symbol+' <span style="font-size:14px;color:var(--text-dim);font-weight:500;">'+(t.signal_type||'')+'</span></h3><span class="x" onclick="closeModal()">×</span></div>';
+  html += '<div class="modal-sub">'+fmtDate(t.date)+' · msg #'+t.msg_id+' · bot '+(t.bot_version||'')+'</div>';
+  if (t.market_warning) html += '<div class="note" style="margin-bottom:16px;">⚠️ '+t.market_warning+'</div>';
+
+  html += '<div class="section-h">Ringkasan Sinyal</div><div class="field-grid">';
+  html += fieldHtml('Entry', fmtRp(t.entry_price));
+  html += fieldHtml('Stop Loss', fmtRp(t.stop_loss) + (t.stop_loss_pct?' ('+t.stop_loss_pct+')':''));
+  html += fieldHtml('Take Profit', fmtRp(t.take_profit) + (t.take_profit_pct?' ('+t.take_profit_pct+')':''));
+  html += fieldHtml('Target 2', fmtRp(t.target2_price));
+  html += fieldHtml('SL Moderat', fmtRp(t.sl_moderat));
+  html += fieldHtml('SL Konservatif', fmtRp(t.sl_konservatif));
+  html += fieldHtml('Confidence', t.confidence_score!=null ? t.confidence_score+'/10 ('+(t.confidence_label||'')+')' : null);
+  html += fieldHtml('Status', '<span class="'+pctCls+'">'+t.status+(t.return_pct?' · '+t.return_pct:'')+'</span>');
+  html += '</div>';
+  if (t.confidence_reasons) html += '<div class="opinion-box" style="margin-bottom:16px;">'+t.confidence_reasons+'</div>';
+
+  html += '<div class="section-h">Indikator Teknikal</div><div class="field-grid">';
+  html += fieldHtml('MACD', t.macd!=null ? t.macd+' (Sig '+t.macd_signal_val+') '+(t.macd_trend||'') : null);
+  html += fieldHtml('RSI (14)', t.rsi!=null ? t.rsi+' '+(t.rsi_label||'') : null);
+  html += fieldHtml('EMA 20 / 50', t.ema20!=null ? fmtRp(t.ema20)+' / '+fmtRp(t.ema50)+' '+(t.ema_trend||'') : null);
+  html += fieldHtml('VWAP', t.vwap!=null ? fmtRp(t.vwap)+' '+(t.vwap_position||'') : null);
+  html += fieldHtml('Bollinger Bands', t.bb_lower!=null ? '['+fmtRp(t.bb_lower)+' - '+fmtRp(t.bb_upper)+']' : null);
+  html += fieldHtml('ADX', t.adx!=null ? t.adx+' '+(t.adx_label||'') : null);
+  html += fieldHtml('ATR', fmtRp(t.atr));
+  html += '</div>';
+
+  html += '<div class="section-h">Pattern</div><div class="field-grid two">';
+  html += fieldHtml('Chart', t.chart_pattern);
+  html += fieldHtml('Candle', t.candle_pattern);
+  html += '</div>';
+
+  if (t.bandar_signal || t.smart_money_net){
+    html += '<div class="section-h">Bandarmology</div><div class="field-grid two">';
+    html += fieldHtml('Sinyal Bandar', t.bandar_signal);
+    html += fieldHtml('Smart Money Net', t.smart_money_net);
+    html += '</div>';
+    if (t.top_buyer_1 || t.top_seller_1){
+      html += '<div class="field-grid two">';
+      html += '<div class="field"><div class="k">Top Buyer</div><div class="v" style="font-size:11.5px;line-height:1.7;">'+[t.top_buyer_1,t.top_buyer_2,t.top_buyer_3].filter(Boolean).join('<br>')+'</div></div>';
+      html += '<div class="field"><div class="k">Top Seller</div><div class="v" style="font-size:11.5px;line-height:1.7;">'+[t.top_seller_1,t.top_seller_2,t.top_seller_3].filter(Boolean).join('<br>')+'</div></div>';
+      html += '</div>';
+    }
+  }
+
+  if (t.foreign_status || t.beta!=null){
+    html += '<div class="section-h">Foreign Flow &amp; Risk</div><div class="field-grid">';
+    html += fieldHtml('Foreign Status', t.foreign_status);
+    html += fieldHtml('Net Asing', t.net_asing ? t.net_asing+' ('+ (t.net_asing_lot!=null?t.net_asing_lot.toLocaleString('id-ID'):'')+' lot)' : null);
+    html += fieldHtml('Buy / Sell Asing', t.foreign_buy_lot!=null ? t.foreign_buy_lot.toLocaleString('id-ID')+' / '+t.foreign_sell_lot.toLocaleString('id-ID')+' lot' : null);
+    html += fieldHtml('Partisipasi Asing', t.partisipasi_asing_pct!=null ? t.partisipasi_asing_pct+'%' : null);
+    html += fieldHtml('Beta', t.beta!=null ? t.beta+' ('+(t.beta_label||'')+')' : null);
+    html += fieldHtml('Volatilitas', t.volatilitas_pct!=null ? t.volatilitas_pct+'%' : null);
+    html += '</div>';
+  }
+
+  if (t.analyst_opinion){
+    html += '<div class="section-h">Analyst Opinion</div><div class="opinion-box">'+t.analyst_opinion+'</div>';
+  }
+  const news = [t.news_1,t.news_2,t.news_3,t.news_4,t.news_5].filter(Boolean);
+  if (news.length){
+    html += '<div class="section-h" style="margin-top:16px;">Berita Terkait</div>'+news.map(n=>'<div class="news-item">'+n+'</div>').join('');
+  }
+
+  html += '<details class="raw-toggle"><summary>Lihat teks asli pesan Telegram</summary><div class="raw-text">'+t.raw_text.replace(/</g,'&lt;')+'</div></details>';
+
+  document.getElementById('modalContent').innerHTML = html;
+  document.getElementById('modalOverlay').classList.add('show');
+}
+function closeModal(){ document.getElementById('modalOverlay').classList.remove('show'); }
+document.addEventListener('keydown', e=>{ if (e.key==='Escape') closeModal(); });
+
+/* ============================= EXPORT ============================= */
+function csvEscape(v){ if (v==null) return ''; const s=String(v).replace(/"/g,'""'); return /[",\n]/.test(s) ? '"'+s+'"' : s; }
+function toCSV(rows, cols){
+  const header = cols.join(',');
+  const body = rows.map(r=> cols.map(c=>csvEscape(r[c])).join(',')).join('\n');
+  return header+'\n'+body;
+}
+function download(filename, content, mime){
+  const blob = new Blob([content], {type:mime});
+  const a = document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+}
+function downloadTradesCSV(){
+  const cols = ['date','symbol','signal_type','entry_price','stop_loss','take_profit','target2_price','confidence_score','confidence_label','status','return_pct','bandar_signal','foreign_status','bot_version'];
+  download('idx_trade_journal.csv', toCSV(STATE.trades, cols), 'text/csv;charset=utf-8;');
+}
+function downloadExcel(){
+  const wb = XLSX.utils.book_new();
+  const tradeCols = ['msg_id','date','symbol','signal_type','market_warning','confidence_score','confidence_label','confidence_reasons',
+    'entry_price','take_profit','take_profit_pct','target2_price','stop_loss','stop_loss_pct','sl_moderat','sl_konservatif',
+    'macd','macd_signal_val','macd_trend','rsi','rsi_label','ema20','ema50','ema_trend','vwap','vwap_position',
+    'bb_lower','bb_upper','adx','adx_label','atr','chart_pattern','candle_pattern','bandar_signal','smart_money_net',
+    'top_buyer_1','top_buyer_2','top_buyer_3','top_seller_1','top_seller_2','top_seller_3','beta','beta_label','volatilitas_pct',
+    'foreign_status','net_asing','net_asing_lot','foreign_buy_lot','foreign_sell_lot','partisipasi_asing_pct',
+    'analyst_opinion','news_1','news_2','news_3','bot_version','status','return_pct'];
+  const tradeSheet = XLSX.utils.json_to_sheet(STATE.trades.map(t=>{
+    const o={}; tradeCols.forEach(c=>o[c]=t[c]!==undefined?t[c]:''); return o;
+  }), {header:tradeCols});
+  XLSX.utils.book_append_sheet(wb, tradeSheet, 'Trade Journal');
+
+  const resultCols = ['msg_id','date','type','symbol','status_text','entry','exit_price','day_high','peak_price','peak_pct','profit_pct'];
+  const resultSheet = XLSX.utils.json_to_sheet(STATE.results.map(r=>{ const o={}; resultCols.forEach(c=>o[c]=r[c]!==undefined?r[c]:''); return o; }), {header:resultCols});
+  XLSX.utils.book_append_sheet(wb, resultSheet, 'Result Updates');
+
+  const regimeCols = ['msg_id','date','regime_date','prediction','score','components','commentary'];
+  const regimeSheet = XLSX.utils.json_to_sheet(STATE.regimes.map(r=>{ const o={}; regimeCols.forEach(c=>o[c]=r[c]!==undefined?r[c]:''); return o; }), {header:regimeCols});
+  XLSX.utils.book_append_sheet(wb, regimeSheet, 'Market Regime');
+
+  XLSX.writeFile(wb, 'idx_signal_journal.xlsx');
+}
+</script>
+</body>
+</html>
