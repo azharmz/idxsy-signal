@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>IDX Signal Parser — Zeta AI Telegram Journal</title>
+<title>Signal AnyApp — Zeta AI Telegram Journal</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -214,7 +214,7 @@
   <header>
     <div>
       <div class="brand-eyebrow">Telegram Export Parser</div>
-      <h1>IDX Signal Parser</h1>
+      <h1>Signal AnyApp</h1>
       <div class="sub">Ubah export JSON grup Telegram sinyal saham jadi jurnal trading terstruktur</div>
     </div>
     <div class="file-controls" id="fileControls" style="display:none">
@@ -455,7 +455,7 @@ function parseResult(text, msgId, date){
 function parseRegime(text, msgId, date){
   const row={msg_id:msgId, date, type:'REGIME'};
   const dm=text.match(/Regime Prediction\s*—\s*(.+)/); row.regime_date = dm? dm[1].trim(): null;
-  const pm=text.match(/Prediksi:\s*(BULLISH|BEARISH|NEUTRAL)\s*\(Score:\s*([\-\d.]+)\)/);
+  const pm=text.match(/Prediksi:\s*(BULLISH|BEARISH|NEUTRAL)\s*\(Score:\s*([+\-\d.]+)\)/);
   if (pm){ row.prediction=pm[1]; row.score=parseFloat(pm[2]); }
   const components=[]; const compRe=/[🔴🟢⚪]\s*([\w &()\/]+):\s*([+\-\d.]+%)\s*\((\d+)%\)/g; let cm;
   while ((cm=compRe.exec(text))!==null) components.push(cm[1].trim()+': '+cm[2]+' (bobot '+cm[3]+'%)');
@@ -828,7 +828,7 @@ function handleFile(file){
     try{
       const data = JSON.parse(ev.target.result);
       const { signals, results, regimes, others } = parseTelegramExport(data);
-      const prevSignalCount = STATE.signals.length, prevResultCount = STATE.results.length;
+      const prevSignalCount = STATE.signals.length, prevResultCount = STATE.results.length, prevRegimeCount = STATE.regimes.length;
       const prevTrades = STATE.trades;
       // Merge (bukan replace) — export JSON baru ditambahkan ke data lama, dedup by msg_id,
       // jadi aman upload berkali-kali (baik export baru maupun re-upload yang sama).
@@ -847,10 +847,13 @@ function handleFile(file){
       saveStateToSupabase();
       const newSignals = STATE.signals.length - prevSignalCount;
       const newResults = STATE.results.length - prevResultCount;
+      const newRegimes = STATE.regimes.length - prevRegimeCount;
       if (prevSignalCount > 0){
         // bukan upload pertama kali — kasih tahu berapa yang beneran baru ditambahkan
+        let msg = '✓ Digabung: +'+Math.max(newSignals,0)+' sinyal baru, +'+Math.max(newResults,0)+' hasil baru (total sinyal sekarang '+STATE.signals.length+').';
+        if (newRegimes > 0) msg += ' +'+newRegimes+' update Market Regime baru.';
         document.getElementById('dataNote').insertAdjacentHTML('afterbegin',
-          '<div style="margin-bottom:8px;color:var(--green)">✓ Digabung: +'+Math.max(newSignals,0)+' sinyal baru, +'+Math.max(newResults,0)+' hasil baru (total sinyal sekarang '+STATE.signals.length+').</div>');
+          '<div style="margin-bottom:8px;color:var(--green)">'+msg+'</div>');
       }
     } catch(err){
       alert('Gagal parsing file. Pastikan ini adalah result.json hasil export Telegram (Messages, format JSON).\n\n'+err.message);
