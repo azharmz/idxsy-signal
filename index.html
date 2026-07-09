@@ -136,7 +136,7 @@
     border-bottom:1px solid var(--line); white-space:nowrap; position:sticky; top:0;
   }
   tbody td{ padding:9px 12px; border-bottom:1px solid var(--line); white-space:nowrap; }
-  tbody tr{ cursor:pointer; }
+  #tradesBody tr, #regimeBody tr{ cursor:pointer; }
   tbody tr:hover{ background:#1b222c; }
   .symbol{ font-family:'IBM Plex Mono',monospace; font-weight:600; letter-spacing:.02em; }
   .badge{ font-size:10.5px; font-weight:600; padding:2px 7px; border-radius:10px; letter-spacing:.02em; }
@@ -600,6 +600,7 @@ async function restoreIfSaved(){
   STATE.signals=saved.signals; STATE.results=saved.results; STATE.regimes=saved.regimes;
   STATE.others=saved.others; STATE.trades=saved.trades; STATE.filename=saved.filename; STATE.lastXlsxRows=saved.lastXlsxRows||[];
   STATE.filtered = STATE.trades.slice();
+  STATE.__localSavedAt = saved.savedAt || null;
   renderAll();
   const el = document.getElementById('syncBadge'), txt = document.getElementById('syncBadgeText');
   if (el && txt){
@@ -683,9 +684,13 @@ function updateSyncBadge(state, extra){
   const el = document.getElementById('syncBadge');
   const txt = document.getElementById('syncBadgeText');
   if (!el || !txt) return;
-  el.className = 'sync-badge sync-'+state;
+  // 'loading' pakai visual sama kayak 'syncing' (kuning, pulsing) tapi labelnya beda —
+  // biar gak kelihatan seolah "menyimpan" padahal lagi ambil data dari cloud.
+  el.className = 'sync-badge sync-'+(state==='loading' ? 'syncing' : state);
   if (state==='syncing'){
     txt.textContent = 'Menyimpan ke cloud...';
+  } else if (state==='loading'){
+    txt.textContent = 'Memuat dari cloud...';
   } else if (state==='ok'){
     // extra.loadedAt = timestamp ASLI dari kolom updated_at pas ambil data cloud (bukan jam sekarang).
     // Tanpa extra (dipanggil setelah save) berarti memang baru saja disimpan, jam sekarang valid.
@@ -721,24 +726,37 @@ async function saveStateToSupabase(){
   } catch(err){ console.warn('Gagal sync ke cloud:', err); updateSyncBadge('error'); }
 }
 
-async function loadStateFromSupabase(){
-  if (!sb) return false;
+/* Dulu tiap buka halaman selalu narik ulang seluruh payload cloud (bisa beberapa MB),
+   bikin loading kerasa lambat walau data lokal sebenarnya sudah sama persis.
+   Sekarang 2 tahap: (1) cek cuma timestamp `updated_at` cloud (query kecil/cepat),
+   (2) baru ambil payload penuh KALAU cloud beneran lebih baru dari cache lokal. */
+async function checkAndSyncFromCloud(localSavedAt){
+  if (!sb) return;
   try{
     const { data: { session } } = await sb.auth.getSession();
-    if (!session) return false;
-    updateSyncBadge('syncing');
+    if (!session) return;
+    const { data: meta, error: metaErr } = await sb.from('trades_data').select('updated_at').eq('user_id', session.user.id).maybeSingle();
+    if (metaErr){ console.warn('Gagal cek update cloud:', metaErr.message); updateSyncBadge('error'); return; }
+    if (!meta){ updateSyncBadge('offline', localSavedAt ? undefined : 'Belum ada data cloud'); return; }
+    const cloudTime = new Date(meta.updated_at).getTime();
+    if (localSavedAt && cloudTime <= localSavedAt){
+      // Cache lokal sudah paling baru — gak perlu narik payload besar dari network.
+      updateSyncBadge('ok', { loadedAt: meta.updated_at });
+      return;
+    }
+    // Cloud lebih baru (atau kita belum punya cache lokal) — baru di sini ambil payload penuh.
+    updateSyncBadge('loading');
     const { data, error } = await sb.from('trades_data').select('payload, updated_at').eq('user_id', session.user.id).maybeSingle();
-    if (error){ console.warn('Gagal ambil data cloud:', error.message); updateSyncBadge('error'); return false; }
-    if (!data || !data.payload || !data.payload.trades || !data.payload.trades.length){ updateSyncBadge('offline','Belum ada data cloud'); return false; }
+    if (error){ console.warn('Gagal ambil data cloud:', error.message); updateSyncBadge('error'); return; }
+    if (!data || !data.payload || !data.payload.trades || !data.payload.trades.length){ updateSyncBadge('offline','Belum ada data cloud'); return; }
     const p = data.payload;
     STATE.signals=p.signals; STATE.results=p.results; STATE.regimes=p.regimes;
     STATE.others=p.others; STATE.trades=p.trades; STATE.filename=p.filename; STATE.lastXlsxRows=p.lastXlsxRows||[];
     STATE.filtered = STATE.trades.slice();
     renderAll();
-    saveStateToDB(); // keep local cache warm too
+    saveStateToDB(); // samakan cache lokal biar next-load gak perlu narik lagi
     updateSyncBadge('ok', { loadedAt: data.updated_at });
-    return true;
-  } catch(err){ console.warn('Gagal ambil data cloud:', err); updateSyncBadge('error'); return false; }
+  } catch(err){ console.warn('Gagal sync dari cloud:', err); updateSyncBadge('error'); }
 }
 
 async function onAuthReady(){
@@ -756,11 +774,11 @@ async function onAuthReady(){
   document.getElementById('userEmailTag').textContent = session.user.email;
   document.getElementById('fileControls').style.display='flex';
 
-  const gotCloud = await loadStateFromSupabase();
-  if (!gotCloud){
-    const gotLocal = await restoreIfSaved();
-    if (!gotLocal){ document.getElementById('emptyState').style.display='block'; }
-  }
+  // Tampilin cache lokal DULU (instan, gak nunggu network) biar dashboard gak kelihatan
+  // blank/macet — baru setelah itu cek cloud di background dan update kalau ada yang lebih baru.
+  const gotLocal = await restoreIfSaved();
+  if (!gotLocal){ document.getElementById('emptyState').style.display='block'; }
+  await checkAndSyncFromCloud(STATE.__localSavedAt || null);
 }
 
 async function initApp(){
@@ -1151,14 +1169,35 @@ function renderTradesTable(){
 function gotoPage(p){ STATE.page=p; renderTradesTable(); }
 
 function renderRegime(){
-  document.getElementById('regimeBody').innerHTML = STATE.regimes.slice().sort((a,b)=>new Date(b.date)-new Date(a.date)).map(r=>{
+  document.getElementById('regimeBody').innerHTML = STATE.regimes.slice().sort((a,b)=>new Date(b.date)-new Date(a.date)).map((r,idx)=>{
     const cls = r.prediction==='BULLISH'?'pos': r.prediction==='BEARISH'?'neg':'';
-    return '<tr><td class="mono">'+fmtDate(r.date)+'</td><td class="'+cls+'" style="font-weight:600">'+(r.prediction||'—')+'</td>'+
+    return '<tr onclick="openRegimeModal('+idx+')"><td class="mono">'+fmtDate(r.date)+'</td><td class="'+cls+'" style="font-weight:600">'+(r.prediction||'—')+'</td>'+
       '<td class="mono">'+(r.score!=null?r.score:'—')+'</td><td style="white-space:normal;max-width:520px;color:var(--text-dim);font-size:12px;">'+(r.commentary||'—')+'</td></tr>';
   }).join('');
 }
+function openRegimeModal(idx){
+  const sorted = STATE.regimes.slice().sort((a,b)=>new Date(b.date)-new Date(a.date));
+  const r = sorted[idx];
+  const cls = r.prediction==='BULLISH'?'pos': r.prediction==='BEARISH'?'neg':'';
+  let html = '<div class="modal-head"><h3>🌍 IHSG Regime <span class="'+cls+'" style="font-size:14px;font-weight:600;">'+(r.prediction||'—')+'</span></h3><span class="x" onclick="closeModal()">×</span></div>';
+  html += '<div class="modal-sub">'+fmtDate(r.date)+' · msg #'+r.msg_id+(r.regime_date?' · '+r.regime_date:'')+'</div>';
+  html += '<div class="section-h">Ringkasan</div><div class="field-grid">';
+  html += fieldHtml('Prediksi', r.prediction);
+  html += fieldHtml('Score', r.score!=null?r.score:null);
+  html += '</div>';
+  if (r.components){
+    html += '<div class="section-h" style="margin-top:16px;">Komponen Index Scoring</div>';
+    html += '<div style="font-size:12.5px;line-height:1.9;color:var(--text-dim);">'+r.components.split(' | ').map(c=>'<div>'+c+'</div>').join('')+'</div>';
+  }
+  if (r.commentary){
+    html += '<div class="section-h" style="margin-top:16px;">Komentar</div><div class="opinion-box">'+r.commentary+'</div>';
+  }
+  html += '<details class="raw-toggle" style="margin-top:16px;"><summary>Lihat teks asli pesan Telegram</summary><div class="raw-text">'+r.raw_text.replace(/</g,'&lt;')+'</div></details>';
+  document.getElementById('modalContent').innerHTML = html;
+  document.getElementById('modalOverlay').classList.add('show');
+}
 function renderOther(){
-  document.getElementById('otherBody').innerHTML = STATE.others.map(o=>
+  document.getElementById('otherBody').innerHTML = STATE.others.slice().sort((a,b)=>new Date(b.date)-new Date(a.date)).map(o=>
     '<tr><td class="mono">'+fmtDate(o.date)+'</td><td>'+o.from+'</td><td style="white-space:normal;max-width:600px;">'+o.text.replace(/</g,'&lt;')+'</td></tr>'
   ).join('');
 }
