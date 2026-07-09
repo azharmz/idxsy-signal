@@ -220,7 +220,7 @@
     <div class="file-controls" id="fileControls" style="display:none">
       <span class="filename-tag" id="filenameTag"></span>
       <button onclick="document.getElementById('fileInput').click()" title="Upload result.json — otomatis digabung dengan data yang sudah ada, aman upload berkali-kali">+ Tambah/Update JSON</button>
-      <button onclick="document.getElementById('xlsxInput').click()" title="Upload dashboard export (xlsx) untuk melengkapi status TP HIT/SL HIT/EXPIRED">📊 Upload Hasil (XLSX)</button>
+      <button onclick="document.getElementById('xlsxInput').click()" title="Upload dashboard export (xlsx) — otomatis digabung dengan data yang sudah ada, melengkapi status TP HIT/SL HIT/EXPIRED, aman upload berkali-kali">+ Tambah/Update XLSX</button>
       <button class="primary" onclick="downloadExcel()">⬇ Export Excel (.xlsx)</button>
       <button onclick="clearSavedData()" title="Hapus data tersimpan dari browser ini">🗑 Hapus Data</button>
       <span class="sync-badge sync-offline" id="syncBadge" title="Status sinkronisasi ke cloud"><span class="dot"></span><span id="syncBadgeText">—</span></span>
@@ -907,12 +907,18 @@ function handleXlsxFile(file){
       const wb = XLSX.read(ev.target.result, {type:'array', cellDates:true});
       const xlsxRows = parseXlsxDashboard(wb);
       if (!xlsxRows.length){ alert('Tidak ada baris valid ditemukan di file xlsx ini. Pastikan formatnya sesuai dashboard (tanggal, simbol, decision, entry, sl, tp, status, return%).'); return; }
+      const prevMatched = STATE.trades.filter(t=>t.source==='JSON+XLSX').length;
+      const prevXlsxOnly = STATE.trades.filter(t=>t.source==='XLSX').length;
       STATE.trades = mergeWithXlsxData(STATE.trades, xlsxRows);
       STATE.lastXlsxRows = xlsxRows;
       STATE.filtered = STATE.trades.slice();
       renderAll();
       saveStateToDB();
       saveStateToSupabase();
+      const newMatched = STATE.trades.filter(t=>t.source==='JSON+XLSX').length - prevMatched;
+      const newXlsxOnly = STATE.trades.filter(t=>t.source==='XLSX').length - prevXlsxOnly;
+      document.getElementById('dataNote').insertAdjacentHTML('afterbegin',
+        '<div style="margin-bottom:8px;color:var(--green)">✓ Digabung: +'+Math.max(newMatched,0)+' trade lengkap (JSON+XLSX), +'+Math.max(newXlsxOnly,0)+' trade XLSX-saja baru.</div>');
     } catch(err){
       alert('Gagal membaca file xlsx.\n\n'+err.message);
     }
@@ -943,7 +949,7 @@ function renderAll(){
       '<br><b>Data tersimpan otomatis</b> ke akun kamu (online, via Supabase) dan juga di-cache lokal di browser ini. Klik "🗑 Hapus Data" untuk membersihkan.'
     : '<b>Catatan:</b> Channel Telegram ini hanya memposting update saat sinyal <i>profit</i> (TP HIT / Profit Terkunci / Profit Terus Naik). '+
       'Tidak ditemukan pesan Stop-Loss-Hit atau Expired secara publik — jadi sinyal berstatus <span class="amber-txt">NO RESULT</span> berarti belum ada '+
-      'update publik, bukan berarti gagal. Klik <b>"📊 Upload Hasil (XLSX)"</b> untuk melengkapi dengan status final (termasuk SL HIT/EXPIRED) dari dashboard.'+
+      'update publik, bukan berarti gagal. Klik <b>"+ Tambah/Update XLSX"</b> untuk melengkapi dengan status final (termasuk SL HIT/EXPIRED) dari dashboard.'+
       '<br><b>Data tersimpan otomatis</b> ke akun kamu (online, via Supabase) dan juga di-cache lokal di browser ini. Klik "🗑 Hapus Data" untuk membersihkan.';
 
   renderStats();
