@@ -1168,11 +1168,12 @@ function renderTradesTable(){
 }
 function gotoPage(p){ STATE.page=p; renderTradesTable(); }
 
+function fmtScore(v){ return v==null ? '—' : (v>0?'+':'')+v; }
 function renderRegime(){
   document.getElementById('regimeBody').innerHTML = STATE.regimes.slice().sort((a,b)=>new Date(b.date)-new Date(a.date)).map((r,idx)=>{
     const cls = r.prediction==='BULLISH'?'pos': r.prediction==='BEARISH'?'neg':'';
     return '<tr onclick="openRegimeModal('+idx+')"><td class="mono">'+fmtDate(r.date)+'</td><td class="'+cls+'" style="font-weight:600">'+(r.prediction||'—')+'</td>'+
-      '<td class="mono">'+(r.score!=null?r.score:'—')+'</td><td style="white-space:normal;max-width:520px;color:var(--text-dim);font-size:12px;">'+(r.commentary||'—')+'</td></tr>';
+      '<td class="mono">'+fmtScore(r.score)+'</td><td style="white-space:normal;max-width:520px;color:var(--text-dim);font-size:12px;">'+(r.commentary||'—')+'</td></tr>';
   }).join('');
 }
 function openRegimeModal(idx){
@@ -1183,7 +1184,7 @@ function openRegimeModal(idx){
   html += '<div class="modal-sub">'+fmtDate(r.date)+' · msg #'+r.msg_id+(r.regime_date?' · '+r.regime_date:'')+'</div>';
   html += '<div class="section-h">Ringkasan</div><div class="field-grid">';
   html += fieldHtml('Prediksi', r.prediction);
-  html += fieldHtml('Score', r.score!=null?r.score:null);
+  html += fieldHtml('Score', r.score!=null?fmtScore(r.score):null);
   html += '</div>';
   if (r.components){
     html += '<div class="section-h" style="margin-top:16px;">Komponen Index Scoring</div>';
