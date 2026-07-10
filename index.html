@@ -1055,7 +1055,7 @@ function durationSourceIcon(src){
   return src==='json' ? '📄' : src==='result' ? '⏱' : src==='fallback' ? '≈' : '';
 }
 function formatDuration(t){
-  if (t.duration_days==null) return '<span style="color:var(--text-dim)">—</span>';
+  if (t.duration_days==null) return '—';
   const d = t.duration_days;
   const text = d < 1 ? Math.round(d*24)+' jam' : d.toFixed(1)+' hari';
   return '<span title="'+durationSourceLabel(t.duration_source)+'">'+text+' <span style="opacity:.6">'+durationSourceIcon(t.duration_source)+'</span></span>';
@@ -1215,7 +1215,7 @@ function renderTradesTable(){
       '<td class="mono">'+(t.confidence_score!=null ? t.confidence_score+'/10' : '—')+'</td>'+
       '<td>'+statusBadge(t.status)+'</td>'+
       '<td class="mono">'+formatDuration(t)+'</td>'+
-      '<td class="mono '+pctClass+'" style="font-weight:600">'+(t.return_pct||'—')+'</td>'+
+      '<td class="mono '+pctClass+'" '+(pct!=null?'style="font-weight:600"':'')+'>'+(t.return_pct||'—')+'</td>'+
       '<td>'+sourceBadge(t.source)+'</td>'+
       '</tr>';
   }).join('');
