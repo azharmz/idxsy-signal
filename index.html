@@ -1,1384 +1,1403 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="id">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>IDXSY Screener</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
-  <style>
-:root {
-  --bg: #0B0F14;
-  --surface: #12181F;
-  --surface-raised: #182029;
-  --border: #232C37;
-  --text: #E7EDF3;
-  --text-muted: #8A97A6;
-  --accent-halal: #2ED3A3;
-  --accent-amber: #F0A937;
-  --accent-red: #E5484D;
-  --accent-neutral: #5B6572;
-
-  --font-display: 'Space Grotesk', sans-serif;
-  --font-body: 'Inter', sans-serif;
-  --font-mono: 'JetBrains Mono', monospace;
-}
-
-* { box-sizing: border-box; }
-
-body {
-  margin: 0;
-  background: var(--bg);
-  color: var(--text);
-  font-family: var(--font-body);
-  min-height: 100vh;
-}
-
-.topbar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 18px 28px;
-  border-bottom: 1px solid var(--border);
-}
-
-.topbar__brand {
-  font-family: var(--font-display);
-  font-size: 20px;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-}
-.topbar__mark--accent { color: var(--accent-halal); }
-.pagination-controls {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  margin: 20px 0 8px;
-}
-.pagination-controls[hidden] { display: none; }
-.pagination-info { font-size: 13px; color: var(--text-muted, #888); }
-
-.topbar__actions { display: flex; gap: 10px; }
-
-.btn {
-  font-family: var(--font-body);
-  font-weight: 600;
-  font-size: 13px;
-  padding: 9px 16px;
-  border-radius: 8px;
-  border: 1px solid var(--border);
-  cursor: pointer;
-  transition: background 0.15s, border-color 0.15s;
-}
-.btn--ghost {
-  background: transparent;
-  color: var(--text);
-}
-.btn--ghost:hover { border-color: var(--accent-halal); }
-.btn--primary {
-  background: var(--accent-halal);
-  color: #06231A;
-  border-color: var(--accent-halal);
-}
-.btn--primary:hover { background: #35e3b2; }
-.btn:disabled { opacity: 0.5; cursor: not-allowed; }
-
-.layout {
-  padding: 24px 28px;
-}
-
-.signals-panel__toolbar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 16px;
-}
-.signals-panel__title {
-  font-family: var(--font-display);
-  font-size: 18px;
-  margin: 0;
-}
-.filter-group { display: flex; gap: 6px; }
-.filter-chip {
-  font-family: var(--font-body);
-  font-size: 12px;
-  font-weight: 600;
-  padding: 7px 14px;
-  border-radius: 999px;
-  border: 1px solid var(--border);
-  background: transparent;
-  color: var(--text-muted);
-  cursor: pointer;
-}
-.filter-chip--active {
-  background: var(--surface-raised);
-  color: var(--text);
-  border-color: var(--accent-halal);
-}
-
-/* Mobile: topbar & filter toggle kegedean di layar kecil - perkecil padding/font,
-   dan biarkan topbar wrap ke baris baru kalau nggak muat daripada numpuk/kepotong. */
-@media (max-width: 600px) {
-  .topbar {
-    flex-wrap: wrap;
-    gap: 10px;
-    padding: 12px 16px;
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>IDXSY Signal</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{
+    --bg: #10141a;
+    --panel: #171d26;
+    --panel-2: #1d2530;
+    --line: #2a3340;
+    --text: #e7e6e0;
+    --text-dim: #8c96a3;
+    --amber: #d4a73d;
+    --amber-dim: #8f7a3f;
+    --green: #4fae79;
+    --red: #c1554a;
+    --blue: #5b8fc9;
+    --accent-halal: #2ED3A3;
+    --radius: 3px;
   }
-  .topbar__brand { font-size: 16px; }
-  .topbar__actions { gap: 6px; flex-wrap: wrap; }
-  .btn {
-    font-size: 11px;
-    padding: 6px 10px;
+  *{box-sizing:border-box;}
+  body{
+    margin:0; background:var(--bg); color:var(--text);
+    font-family:'IBM Plex Sans', sans-serif; font-size:14px;
+    -webkit-font-smoothing:antialiased;
   }
-  .layout { padding: 16px; }
-  .signals-panel__toolbar {
-    flex-wrap: wrap;
-    gap: 8px;
+  .mono{ font-family:'IBM Plex Mono', monospace; }
+  .wrap{ max-width:1280px; margin:0 auto; padding:28px 24px 60px; }
+
+  /* header */
+  header{
+    display:flex; align-items:flex-end; justify-content:space-between;
+    border-bottom:1px solid var(--line); padding-bottom:18px; margin-bottom:22px;
+    gap:16px; flex-wrap:wrap;
   }
-  .filter-chip {
-    font-size: 11px;
-    padding: 5px 10px;
+  .brand-eyebrow{
+    font-family:'IBM Plex Mono', monospace; font-size:11px; letter-spacing:.14em;
+    color:var(--amber); text-transform:uppercase; margin-bottom:6px;
   }
-}
-.signals-panel__count { color: var(--text-muted); font-size: 12px; }
-.sync-status {
-  font-size: 12px;
-  color: var(--text-muted);
-  margin: 0 0 12px;
-}
+  h1{ font-family:'Space Grotesk', sans-serif; font-size:26px; margin:0; font-weight:600; letter-spacing:-0.01em;}
+  .topbar__mark--accent{ color:var(--accent-halal); }
+  .sub{ color:var(--text-dim); font-size:13px; margin-top:4px; }
+  .file-controls{ display:flex; align-items:center; gap:10px; }
+  .filename-tag{
+    font-family:'IBM Plex Mono', monospace; font-size:12px; color:var(--text-dim);
+    border:1px solid var(--line); padding:6px 10px; border-radius:var(--radius);
+    max-width:260px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  }
+  button, .btn{
+    font-family:'IBM Plex Sans', sans-serif; font-size:13px; font-weight:600;
+    background:var(--panel-2); color:var(--text); border:1px solid var(--line);
+    padding:8px 14px; border-radius:var(--radius); cursor:pointer; transition:.12s border-color, .12s background;
+  }
+  button:hover, .btn:hover{ border-color:var(--amber-dim); background:#232b37; }
+  button.primary{ background:var(--amber); color:#1a1406; border-color:var(--amber); }
+  button.primary:hover{ background:#e0b64f; }
+  input[type=file]{ display:none; }
 
-.signals-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: 16px;
-}
+  /* empty state */
+  .empty{
+    border:1px dashed var(--line); border-radius:6px; padding:70px 30px;
+    text-align:center; margin-top:40px; transition:.15s border-color, .15s background;
+  }
+  .empty.drag{ border-color:var(--amber); background:#181f2a; }
+  .empty h2{ font-family:'Space Grotesk',sans-serif; font-weight:600; font-size:19px; margin:0 0 10px; }
+  .empty p{ color:var(--text-dim); max-width:460px; margin:0 auto 22px; line-height:1.6; font-size:13.5px; }
+  .empty ol{ text-align:left; display:inline-block; color:var(--text-dim); font-size:12.5px; line-height:1.9; margin:0 0 26px; }
+  .empty code{ background:var(--panel-2); padding:1px 6px; border-radius:2px; color:var(--amber); }
 
-.card {
-  position: relative;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 16px 16px 16px 20px;
-  overflow: hidden;
-}
-/* Signature element: left-edge bar mengkodekan sinyal bandarmology (buy/sell/neutral) —
-   sekilas pandang, warna kiri kartu langsung kasih tahu arah smart money tanpa baca teks. */
-.card::before {
-  content: '';
-  position: absolute;
-  left: 0; top: 0; bottom: 0;
-  width: 4px;
-  background: var(--bar-color, var(--accent-neutral));
-}
+  /* stat cards */
+  .stats-grid{
+    display:grid; grid-template-columns:repeat(6,1fr); gap:1px;
+    background:var(--line); border:1px solid var(--line); border-radius:6px; overflow:hidden;
+    margin-bottom:20px;
+  }
+  .stat-card{ background:var(--panel); padding:16px 14px; position:relative; }
+  .stat-label{ font-size:10.5px; text-transform:uppercase; letter-spacing:.08em; color:var(--text-dim); margin-bottom:8px; }
+  .stat-value{ font-family:'IBM Plex Mono',monospace; font-size:20px; font-weight:600; }
+  .stat-sub{ font-size:11px; color:var(--text-dim); margin-top:4px; }
+  .pos{ color:var(--green); } .neg{ color:var(--red); } .amber-txt{ color:var(--amber); }
 
-.card__head {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 10px;
-}
-.card__ticker {
-  font-family: var(--font-mono);
-  font-size: 20px;
-  font-weight: 700;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.card__ticker-link {
-  color: var(--text);
-  text-decoration: none;
-  border-bottom: 1px dashed var(--text-muted);
-}
-.card__ticker-link:hover {
-  color: var(--accent-halal);
-  border-bottom-color: var(--accent-halal);
-}
-.badge-halal {
-  font-size: 10px;
-  font-weight: 700;
-  padding: 2px 7px;
-  border-radius: 5px;
-  background: rgba(46, 211, 163, 0.15);
-  color: var(--accent-halal);
-}
-.badge-nonhalal {
-  font-size: 10px;
-  font-weight: 700;
-  padding: 2px 7px;
-  border-radius: 5px;
-  background: rgba(229, 72, 77, 0.15);
-  color: var(--accent-red);
-}
-.card__confidence {
-  font-family: var(--font-mono);
-  font-size: 13px;
-  color: var(--text-muted);
-  text-align: right;
-}
-.card__meta {
-  text-align: right;
-}
-.card__timestamp {
-  font-size: 10px;
-  color: var(--text-muted);
-  margin-top: 2px;
-}
+  .note{
+    font-size:12px; color:var(--text-dim); background:var(--panel);
+    border:1px solid var(--line); border-left:3px solid var(--amber-dim);
+    padding:10px 14px; border-radius:var(--radius); margin-bottom:20px; line-height:1.55;
+  }
 
-.card__prices {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
-  margin-bottom: 12px;
-  font-family: var(--font-mono);
-}
-.price-block__label { font-size: 10px; color: var(--text-muted); text-transform: uppercase; }
-.price-block__value { font-size: 14px; font-weight: 600; }
-.price-block__pct { font-size: 11px; }
-.pct-pos { color: var(--accent-halal); }
-.pct-neg { color: var(--accent-red); }
+  /* equity curve */
+  .panel{ background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:18px 18px 10px; margin-bottom:20px; }
+  .panel-title{ font-family:'Space Grotesk',sans-serif; font-size:13.5px; font-weight:600; margin:0 0 12px; display:flex; align-items:center; gap:8px;}
+  .panel-title .tag{ font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:var(--amber); border:1px solid var(--amber-dim); padding:1px 6px; border-radius:2px; }
 
-.card__bandar {
-  display: flex;
-  justify-content: space-between;
-  font-size: 12px;
-  color: var(--text-muted);
-  border-top: 1px solid var(--border);
-  padding-top: 10px;
-  margin-bottom: 10px;
-}
+  /* tabs */
+  .tabs{ display:flex; gap:4px; border-bottom:1px solid var(--line); margin-bottom:16px; }
+  .tab{
+    padding:9px 16px; font-size:12.5px; font-weight:600; color:var(--text-dim);
+    cursor:pointer; border-bottom:2px solid transparent; user-select:none;
+  }
+  .tab.active{ color:var(--text); border-bottom-color:var(--amber); }
 
-.card__toggle {
-  font-size: 12px;
-  color: var(--accent-halal);
-  cursor: pointer;
-  background: none;
-  border: none;
-  padding: 0;
-  font-family: var(--font-body);
-  font-weight: 600;
-}
+  /* filter bar */
+  .filter-bar{ display:flex; gap:10px; flex-wrap:wrap; margin-bottom:14px; align-items:center; }
+  .filter-bar input[type=text], .filter-bar select{
+    background:var(--panel-2); border:1px solid var(--line); color:var(--text);
+    padding:7px 10px; border-radius:var(--radius); font-size:12.5px; font-family:'IBM Plex Sans',sans-serif;
+  }
+  .filter-bar input[type=text]{ min-width:160px; }
+  .filter-bar .spacer{ flex:1; }
+  .count-tag{ font-size:11.5px; color:var(--text-dim); font-family:'IBM Plex Mono',monospace; }
 
-.card__detail {
-  margin-top: 10px;
-  padding-top: 10px;
-  border-top: 1px solid var(--border);
-  font-size: 12px;
-  color: var(--text-muted);
-  display: grid;
-  gap: 6px;
-}
-.card__detail[hidden] { display: none; }
-.card__detail dt { color: var(--text); font-weight: 600; display: inline; }
+  /* auth screen */
+  .auth-wrap{ max-width:340px; margin:60px auto; text-align:center; }
+  .auth-wrap h2{ font-family:'Space Grotesk',sans-serif; font-weight:600; font-size:19px; margin:0 0 8px; }
+  .auth-wrap p{ color:var(--text-dim); font-size:13px; margin:0 0 22px; }
+  .auth-tabs{ display:flex; gap:4px; margin-bottom:18px; justify-content:center; }
+  .auth-tabs button{ background:none; border:1px solid var(--line); color:var(--text-dim); padding:6px 16px; border-radius:6px; cursor:pointer; font-size:12.5px; }
+  .auth-tabs button.active{ color:var(--text); border-color:var(--amber); }
+  .auth-field{ margin-bottom:12px; text-align:left; }
+  .auth-field label{ display:block; font-size:11.5px; color:var(--text-dim); margin-bottom:5px; }
+  .auth-field input{ width:100%; box-sizing:border-box; background:var(--panel-2); border:1px solid var(--line); color:var(--text); padding:9px 11px; border-radius:6px; font-size:13px; font-family:'IBM Plex Sans',sans-serif; }
+  .auth-msg{ font-size:12px; margin-top:12px; min-height:16px; }
+  .auth-msg.err{ color:#f87171; }
+  .auth-msg.ok{ color:#4ade80; }
+  .auth-submit{ width:100%; margin-top:6px; }
 
-.empty-state {
-  color: var(--text-muted);
-  text-align: center;
-  padding: 60px 0;
-  font-size: 14px;
-}
+  /* table */
+  .table-wrap{ overflow-x:auto; border:1px solid var(--line); border-radius:6px; }
+  table{ width:100%; border-collapse:collapse; font-size:12.5px; }
+  thead th{
+    text-align:left; padding:9px 12px; background:var(--panel-2); color:var(--text-dim);
+    font-weight:600; font-size:10.5px; text-transform:uppercase; letter-spacing:.05em;
+    border-bottom:1px solid var(--line); white-space:nowrap; position:sticky; top:0;
+  }
+  tbody td{ padding:9px 12px; border-bottom:1px solid var(--line); white-space:nowrap; }
+  #tradesBody tr, #regimeBody tr{ cursor:pointer; }
+  tbody tr:hover{ background:#1b222c; }
+  .symbol{ font-family:'IBM Plex Mono',monospace; font-weight:600; letter-spacing:.02em; }
+  .badge{ font-size:10.5px; font-weight:600; padding:2px 7px; border-radius:10px; letter-spacing:.02em; }
+  .badge-buy{ background:rgba(79,174,121,.15); color:var(--green); }
+  .badge-watchlist{ background:rgba(212,167,61,.15); color:var(--amber); }
+  .badge-tp{ background:rgba(79,174,121,.18); color:var(--green); }
+  .badge-locked{ background:rgba(91,143,201,.18); color:var(--blue); }
+  .badge-running{ background:rgba(212,167,61,.18); color:var(--amber); }
+  .badge-none{ background:rgba(140,150,163,.12); color:var(--text-dim); }
+  .badge-slhit{ background:rgba(193,85,74,.18); color:var(--red); }
+  .badge-expired{ background:rgba(140,150,163,.16); color:var(--text-dim); }
+  .badge-src-both{ background:rgba(79,174,121,.15); color:var(--green); }
+  .badge-src-json{ background:rgba(212,167,61,.15); color:var(--amber); }
+  .badge-src-xlsx{ background:rgba(91,143,201,.15); color:var(--blue); }
 
-.modal {
-  position: fixed; inset: 0;
-  background: rgba(4, 7, 10, 0.7);
-  display: flex; align-items: center; justify-content: center;
-  z-index: 20;
-}
-/* PENTING: [hidden] attribute secara default punya display:none dari browser,
-   tapi aturan .modal { display:flex } di atas ini menang karena class selector
-   lebih spesifik daripada attribute selector bawaan browser. Tanpa baris di
-   bawah ini, modal.hidden = true di JS TIDAK akan menyembunyikan modal. */
-.modal[hidden] {
-  display: none;
-}
-.modal__card {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  padding: 24px;
-  width: 420px;
-  max-width: 92vw;
-  max-height: 88vh;
-  overflow-y: auto;
-}
-.modal__card--wide { width: 560px; }
-.modal__head {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 4px;
-}
-.modal__head h2 { margin: 0; font-family: var(--font-display); font-size: 18px; }
-.modal__close {
-  background: none;
-  border: none;
-  color: var(--text-muted);
-  font-size: 22px;
-  line-height: 1;
-  cursor: pointer;
-  padding: 4px;
-}
-.modal__close:hover { color: var(--text); }
-.modal__hint { color: var(--text-muted); font-size: 12px; margin: 4px 0 10px; }
-.modal__textarea {
-  width: 100%;
-  min-height: 160px;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  color: var(--text);
-  font-family: var(--font-mono);
-  font-size: 13px;
-  padding: 10px;
-}
-.modal__textarea--tall { min-height: 260px; font-size: 12px; }
-.modal__row { display: flex; gap: 10px; margin-top: 12px; }
-.modal__status { display: block; margin-top: 8px; font-size: 12px; color: var(--text-muted); }
+  .sync-badge{ display:inline-flex; align-items:center; gap:6px; font-size:11.5px; font-weight:600; padding:4px 10px; border-radius:12px; cursor:default; white-space:nowrap; }
+  .sync-badge .dot{ width:7px; height:7px; border-radius:50%; flex:none; }
+  .sync-badge.sync-syncing{ background:rgba(212,167,61,.15); color:var(--amber); }
+  .sync-badge.sync-syncing .dot{ background:var(--amber); animation:pulse 1s infinite ease-in-out; }
+  .sync-badge.sync-ok{ background:rgba(79,174,121,.15); color:var(--green); }
+  .sync-badge.sync-ok .dot{ background:var(--green); }
+  .sync-badge.sync-error{ background:rgba(193,85,74,.18); color:var(--red); cursor:pointer; }
+  .sync-badge.sync-error .dot{ background:var(--red); }
+  .sync-badge.sync-offline{ background:rgba(140,150,163,.14); color:var(--text-dim); }
+  .sync-badge.sync-offline .dot{ background:var(--text-dim); }
+  @keyframes pulse{ 0%,100%{ opacity:1; } 50%{ opacity:.35; } }
 
-.parse-result {
-  margin-top: 14px;
-  display: grid;
-  gap: 6px;
-  font-size: 13px;
-}
-.parse-result__item {
-  display: flex;
-  justify-content: space-between;
-  padding: 6px 10px;
-  border-radius: 8px;
-  background: var(--surface-raised);
-}
-.parse-result__ticker { font-family: var(--font-mono); font-weight: 700; }
+  .pagination{ display:flex; gap:6px; justify-content:center; padding:14px 0; }
+  .pagination button{ padding:5px 11px; font-size:12px; }
+  .pagination button.active{ border-color:var(--amber); color:var(--amber); }
 
-/* --- Auth screen (login/signup) --- */
-.auth-screen {
-  min-height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 20px;
-}
-/* Bug yang sama kayak .modal dulu: [hidden] browser defaultnya display:none,
-   tapi class .auth-screen { display:flex } di atas ini menang karena class
-   selector lebih spesifik. Tanpa baris ini, authScreen.hidden = true di JS
-   TIDAK menyembunyikan layar login walau appRoot udah ditampilkan. */
-.auth-screen[hidden] {
-  display: none;
-}
-.auth-card {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  padding: 28px;
-  width: 360px;
-  max-width: 92vw;
-}
-.auth-tabs {
-  display: flex;
-  gap: 6px;
-  margin-bottom: 16px;
-}
-.auth-tab {
-  flex: 1;
-  padding: 8px;
-  border-radius: 8px;
-  border: 1px solid var(--border);
-  background: transparent;
-  color: var(--text-muted);
-  font-family: var(--font-body);
-  font-weight: 600;
-  font-size: 13px;
-  cursor: pointer;
-}
-.auth-tab.active {
-  background: var(--surface-raised);
-  color: var(--text);
-  border-color: var(--accent-halal);
-}
-.auth-input {
-  width: 100%;
-  margin-bottom: 10px;
-  min-height: unset;
-}
-.auth-msg {
-  display: block;
-  margin-top: 10px;
-  font-size: 12px;
-  color: var(--text-muted);
-  text-align: center;
-}
-.auth-msg.err { color: var(--accent-red); }
-.auth-msg.ok { color: var(--accent-halal); }
-.auth-link {
-  display: block;
-  width: 100%;
-  margin-top: 10px;
-  background: none;
-  border: none;
-  color: var(--text-muted);
-  font-size: 12px;
-  font-family: var(--font-body);
-  cursor: pointer;
-  text-align: center;
-}
-.auth-link:hover { color: var(--accent-halal); }
+  /* modal */
+  .overlay{
+    position:fixed; inset:0; background:rgba(6,8,11,.7); display:none;
+    align-items:flex-start; justify-content:center; padding:40px 20px; overflow-y:auto; z-index:50;
+  }
+  .overlay.show{ display:flex; }
+  .modal{
+    background:var(--panel); border:1px solid var(--line); border-radius:8px; max-width:760px; width:100%;
+    padding:26px 28px 30px;
+  }
+  .modal-head{ display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:6px; }
+  .modal-head h3{ font-family:'Space Grotesk',sans-serif; margin:0; font-size:20px; }
+  .modal-head .x{ cursor:pointer; color:var(--text-dim); font-size:20px; line-height:1; padding:2px 6px;}
+  .modal-head .x:hover{ color:var(--text); }
+  .modal-sub{ color:var(--text-dim); font-size:12px; margin-bottom:18px; font-family:'IBM Plex Mono',monospace;}
+  .field-grid{ display:grid; grid-template-columns:repeat(3,1fr); gap:10px 16px; margin-bottom:18px; }
+  .field-grid.two{ grid-template-columns:repeat(2,1fr); }
+  .field{ background:var(--panel-2); border:1px solid var(--line); border-radius:var(--radius); padding:8px 10px;}
+  .field .k{ font-size:10px; text-transform:uppercase; letter-spacing:.06em; color:var(--text-dim); margin-bottom:3px;}
+  .field .v{ font-family:'IBM Plex Mono',monospace; font-size:13px; }
+  .section-h{ font-size:11px; text-transform:uppercase; letter-spacing:.08em; color:var(--amber); margin:18px 0 8px; }
+  .opinion-box{ background:var(--panel-2); border-left:3px solid var(--amber-dim); border-radius:var(--radius); padding:10px 12px; font-size:12.5px; line-height:1.6; color:var(--text); }
+  .news-item{ font-size:12px; color:var(--text-dim); padding:4px 0; border-bottom:1px solid var(--line); }
+  .news-item:last-child{ border-bottom:none; }
+  .raw-toggle{ margin-top:16px; }
+  .raw-toggle summary{ cursor:pointer; font-size:11.5px; color:var(--text-dim); }
+  .raw-text{ white-space:pre-wrap; font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--text-dim); background:#0d1116; padding:12px; border-radius:var(--radius); margin-top:8px; max-height:280px; overflow-y:auto; }
 
-  </style>
+  footer{ text-align:center; color:var(--text-dim); font-size:11.5px; margin-top:30px; }
+
+  @media (max-width:900px){
+    .stats-grid{ grid-template-columns:repeat(3,1fr); }
+    .field-grid{ grid-template-columns:repeat(2,1fr); }
+  }
+  @media (max-width:600px){
+    .stats-grid{ grid-template-columns:repeat(2,1fr); }
+    .field-grid{ grid-template-columns:1fr; }
+  }
+</style>
 </head>
 <body>
-  <!-- Layar login/signup - tampil kalau belum ada sesi Supabase Auth -->
-  <div id="authScreen" class="auth-screen">
-    <div class="auth-card">
-      <div class="topbar__brand" style="margin-bottom: 18px;">
-        <span class="topbar__mark topbar__mark--accent">IDXSY</span><span class="topbar__mark"> Screener</span>
-      </div>
+<div class="wrap">
 
-      <div id="authFormNormal">
-        <div class="auth-tabs">
-          <button id="tabLogin" class="auth-tab active">Masuk</button>
-          <button id="tabSignup" class="auth-tab">Daftar</button>
-        </div>
-        <input id="authEmail" type="email" class="modal__textarea auth-input" placeholder="Email" />
-        <input id="authPassword" type="password" class="modal__textarea auth-input" placeholder="Password" />
-        <button id="authSubmitBtn" class="btn btn--primary" style="width: 100%;">Masuk</button>
-        <button id="btnForgotPassword" class="auth-link">Lupa password?</button>
-      </div>
-
-      <div id="authFormForgot" hidden>
-        <p class="modal__hint">Masukkan email, kami kirim link reset password.</p>
-        <input id="forgotEmail" type="email" class="modal__textarea auth-input" placeholder="Email" />
-        <button id="btnSendReset" class="btn btn--primary" style="width: 100%;">Kirim Link Reset</button>
-        <button id="btnBackToLogin" class="auth-link">&larr; Kembali ke login</button>
-      </div>
-
-      <div id="authFormRecovery" hidden>
-        <p class="modal__hint">Masukkan password baru kamu.</p>
-        <input id="newPassword" type="password" class="modal__textarea auth-input" placeholder="Password baru" />
-        <button id="btnSetNewPassword" class="btn btn--primary" style="width: 100%;">Simpan Password Baru</button>
-      </div>
-
-      <span id="authMsg" class="auth-msg"></span>
+  <header>
+    <div>
+      <div class="brand-eyebrow">Telegram Export Parser</div>
+      <h1><span class="topbar__mark--accent">IDXSY</span> Signal</h1>
+      <div class="sub">Ubah export JSON grup Telegram sinyal saham jadi jurnal trading terstruktur</div>
     </div>
+    <div class="file-controls" id="fileControls" style="display:none">
+      <span class="filename-tag" id="filenameTag"></span>
+      <button onclick="document.getElementById('fileInput').click()" title="Upload result.json — otomatis digabung dengan data yang sudah ada, aman upload berkali-kali">+ Tambah/Update JSON</button>
+      <button onclick="document.getElementById('xlsxInput').click()" title="Upload dashboard export (xlsx) — otomatis digabung dengan data yang sudah ada, melengkapi status TP HIT/SL HIT/EXPIRED, aman upload berkali-kali">+ Tambah/Update XLSX</button>
+      <button class="primary" onclick="downloadExcel()">⬇ Export Excel (.xlsx)</button>
+      <button onclick="clearSavedData()" title="Hapus data tersimpan dari browser ini">🗑 Hapus Data</button>
+      <span class="sync-badge sync-offline" id="syncBadge" title="Status sinkronisasi ke cloud"><span class="dot"></span><span id="syncBadgeText">—</span></span>
+      <span class="filename-tag" id="userEmailTag" style="display:none"></span>
+      <button onclick="doLogout()" id="logoutBtn" style="display:none">Keluar</button>
+    </div>
+    <input type="file" id="fileInput" accept=".json">
+    <input type="file" id="xlsxInput" accept=".xlsx,.xls">
+  </header>
+
+  <div id="authScreen" class="auth-wrap">
+    <h2>Masuk untuk sinkronisasi</h2>
+    <p>Login supaya jurnal trading kamu tersimpan online dan bisa dibuka dari HP atau laptop manapun.</p>
+    <div class="auth-tabs">
+      <button id="tabLogin" class="active" onclick="switchAuthTab('login')">Masuk</button>
+      <button id="tabSignup" onclick="switchAuthTab('signup')">Daftar</button>
+    </div>
+    <div class="auth-field">
+      <label>Email</label>
+      <input type="email" id="authEmail" placeholder="kamu@email.com" autocomplete="email">
+    </div>
+    <div class="auth-field">
+      <label>Password</label>
+      <input type="password" id="authPassword" placeholder="minimal 6 karakter" autocomplete="current-password">
+    </div>
+    <button class="primary auth-submit" id="authSubmitBtn" onclick="doAuthSubmit()">Masuk</button>
+    <div class="auth-msg" id="authMsg"></div>
   </div>
 
-  <!-- App utama - tampil setelah login -->
-  <div id="appRoot" hidden>
-    <header class="topbar">
-      <div class="topbar__brand">
-        <span class="topbar__mark topbar__mark--accent">IDXSY</span><span class="topbar__mark"> Screener</span>
-      </div>
-      <div class="topbar__actions">
-        <button id="btnManageIssi" class="btn btn--ghost">Kelola ISSI</button>
-        <button id="btnRefresh" class="btn btn--ghost">Refresh</button>
-        <button id="btnLogout" class="btn btn--ghost">Keluar</button>
-      </div>
-    </header>
-
-    <main class="layout">
-      <section class="signals-panel">
-        <div class="signals-panel__toolbar">
-          <h1 class="signals-panel__title">Sinyal</h1>
-          <div class="filter-group" id="filterHalal">
-            <button class="filter-chip filter-chip--active" data-filter="halal">Halal</button>
-            <button class="filter-chip" data-filter="non-halal">Non-halal</button>
-            <button class="filter-chip" data-filter="all">Semua (riset)</button>
-          </div>
-          <span id="signalCount" class="signals-panel__count"></span>
-        </div>
-        <p id="syncStatus" class="sync-status"></p>
-        <div id="signalsGrid" class="signals-grid"></div>
-        <div id="paginationControls" class="pagination-controls" hidden>
-          <button id="btnLoadMore" class="btn btn--ghost">Lebih banyak</button>
-          <span id="paginationInfo" class="pagination-info"></span>
-        </div>
-        <p id="emptyState" class="empty-state" hidden>
-          Belum ada sinyal. Sinyal masuk lewat app "Web Signal" - buka app itu dulu,
-          nanti otomatis muncul di sini.
-        </p>
-      </section>
-    </main>
-
-    <div id="issiModal" class="modal" hidden>
-      <div class="modal__card">
-        <div class="modal__head">
-          <h2>Kelola daftar ISSI</h2>
-          <button id="btnCloseIssiModal" class="modal__close" aria-label="Tutup">&times;</button>
-        </div>
-        <p class="modal__hint">Satu kode ticker per baris, atau dipisah koma.</p>
-        <textarea id="issiInput" class="modal__textarea"></textarea>
-        <div class="modal__row">
-          <button id="btnSaveIssi" class="btn btn--primary">Simpan</button>
-        </div>
-        <span id="issiStatus" class="modal__status"></span>
-      </div>
-    </div>
+  <div id="emptyState" class="empty" style="display:none">
+    <h2>Upload export Telegram (result.json)</h2>
+    <p>Drag & drop file di sini, atau klik tombol di bawah. Semua parsing berjalan di browser kamu — file tidak diupload ke server manapun.</p>
+    <ol>
+      <li>Telegram Desktop → buka grup/channel → menu (⋮) → <b>Export chat history</b></li>
+      <li>Format: pilih <b>JSON</b>, centang <b>Messages</b> saja sudah cukup</li>
+      <li>Upload file <code>result.json</code> yang dihasilkan di sini</li>
+    </ol>
+    <div><button class="primary" onclick="document.getElementById('fileInput').click()">Pilih File JSON</button></div>
   </div>
 
-  <script type="module">
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+  <div id="dashboard" style="display:none">
 
-// ---------- 1. SUPABASE CLIENT (auth + sync dari Web Signal) ----------
-// Supabase client wrapper - satu titik pusat buat semua interaksi ke database.
-// Input sinyal SEPENUHNYA lewat "Web Signal" (app terpisah yang sudah jalan),
-// yang nulis ke tabel trades_data (1 JSON blob per user). App ini (IDX ISSI
-// Screener) cuma BACA dari situ, transform ke tabel relasional (signals/
-// confirmations/market_regime) biar bisa di-filter halal & dianalisis pakai
-// SQL, lalu ditampilkan. Sync idempotent pakai msg_id sebagai kunci unik -
-// aman dipanggil berkali-kali (upsert, bukan insert), jadi bisa otomatis
-// jalan tiap kali app dibuka tanpa risiko data dobel.
+    <div class="note" id="dataNote"></div>
 
+    <div class="stats-grid" id="statsGrid"></div>
 
-const SUPABASE_URL = 'https://gfxhtpqzebxycijdnpjp.supabase.co';
-const SUPABASE_ANON_KEY = 'sb_publishable_BXkSOULyV06I6N6DhIIAdw_TJXQUGOS';
+    <div class="panel">
+      <div class="panel-title">Equity Curve <span class="tag">closed trades</span></div>
+      <div id="equityChart"></div>
+    </div>
 
-const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    <div class="tabs" id="mainTabs">
+      <div class="tab active" data-tab="trades">Trade Journal</div>
+      <div class="tab" data-tab="regime">Market Regime</div>
+      <div class="tab" data-tab="other">Pesan Lain</div>
+    </div>
 
-// --- Auth ---
-async function getSession() {
-  const { data: { session } } = await sb.auth.getSession();
-  return session;
+    <div id="tab-trades">
+      <div class="filter-bar">
+        <input type="text" id="searchSymbol" placeholder="Cari simbol saham...">
+        <select id="filterType"><option value="">Semua Signal</option><option value="BUY">BUY</option><option value="WATCHLIST">WATCHLIST</option></select>
+        <select id="filterStatus">
+          <option value="">Semua Status</option>
+          <option value="TP HIT">TP HIT</option>
+          <option value="CLOSED (LOCKED)">CLOSED (LOCKED)</option>
+          <option value="SL HIT">SL HIT</option>
+          <option value="EXPIRED">EXPIRED</option>
+          <option value="RUNNING">RUNNING</option>
+          <option value="NO RESULT">NO RESULT</option>
+        </select>
+        <select id="filterSource">
+          <option value="">Semua Sumber</option>
+          <option value="JSON+XLSX">JSON + XLSX (lengkap)</option>
+          <option value="JSON">JSON saja (pending)</option>
+          <option value="XLSX">XLSX saja (di luar cakupan export)</option>
+        </select>
+        <div class="spacer"></div>
+        <span class="count-tag" id="tradeCount"></span>
+        <button onclick="downloadTradesCSV()">⬇ CSV</button>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr>
+            <th>Tanggal</th><th>Simbol</th><th>Signal</th><th>Entry</th><th>SL</th><th>TP</th>
+            <th>Confidence</th><th>Status</th><th>Durasi</th><th>Return</th><th>Sumber</th>
+          </tr></thead>
+          <tbody id="tradesBody"></tbody>
+        </table>
+      </div>
+      <div class="pagination" id="tradesPagination"></div>
+    </div>
+
+    <div id="tab-regime" style="display:none">
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Tanggal</th><th>Prediksi</th><th>Score</th><th>Komentar</th></tr></thead>
+          <tbody id="regimeBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div id="tab-other" style="display:none">
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Tanggal</th><th>Dari</th><th>Pesan</th></tr></thead>
+          <tbody id="otherBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+
+  <footer>Diproses sepenuhnya di browser — tidak ada data yang dikirim ke server.</footer>
+</div>
+
+<div class="overlay" id="modalOverlay" onclick="if(event.target===this) closeModal()">
+  <div class="modal" id="modalContent"></div>
+</div>
+
+<script>
+/* ============================= PARSER ============================= */
+function flatten(text){
+  if (typeof text === 'string') return text;
+  if (!Array.isArray(text)) return '';
+  let out = '';
+  for (const t of text){ if (typeof t==='string') out+=t; else if (t && typeof t.text==='string') out+=t.text; }
+  return out;
+}
+function parseNum(str){
+  if (str===undefined || str===null) return null;
+  let s = String(str).replace(/Rp/gi,'').trim();
+  s = s.replace(/[^\d.,\-+]/g,'');
+  if (s===''||s==='-'||s==='+') return null;
+  const hasComma=s.includes(','), hasDot=s.includes('.');
+  if (hasComma && hasDot){
+    const lc=s.lastIndexOf(','), ld=s.lastIndexOf('.');
+    if (lc>ld) s=s.replace(/\./g,'').replace(',', '.'); else s=s.replace(/,/g,'');
+  } else if (hasComma){
+    const parts=s.split(',');
+    if (parts.length>1 && parts.slice(1).every(p=>p.length===3)) s=parts.join(''); else s=s.replace(',', '.');
+  } else if (hasDot){
+    const parts=s.split('.');
+    if (parts.length>1 && parts.slice(1).every(p=>p.length===3)) s=parts.join('');
+  }
+  const v=parseFloat(s); return isNaN(v)?null:v;
+}
+function match1(re, text){ const m=text.match(re); return m? m[1].trim() : null; }
+
+function parseSignal(text, msgId, date){
+  const row={msg_id:msgId, date, type:'SIGNAL'};
+  const lines=text.split('\n');
+  row.market_warning = match1(/⚠️\s*(.+)/, text);
+  row.symbol = match1(/Saham:\s*(\S+)/, text);
+  const sigM = text.match(/Signal:\s*.*?\b(BUY|WATCHLIST|SELL)\b/);
+  row.signal_type = sigM ? sigM[1] : null;
+  const confM = text.match(/Confidence Score:\s*[^\d]*(\d+)\/10\s*\(([^)]+)\)/);
+  if (confM){ row.confidence_score=parseInt(confM[1],10); row.confidence_label=confM[2].trim(); }
+  const reasonLines = lines.filter(l=>/^\s*[+\-]\d+\s+\S/.test(l));
+  row.confidence_reasons = reasonLines.length ? reasonLines.map(l=>l.trim()).join('; ') : null;
+  row.entry_price = parseNum(match1(/Entry Price:\s*(Rp?[\d.,]+)/, text));
+  let tpM = text.match(/Take Profit:\s*(Rp?[\d.,]+)/);
+  if (tpM){ row.take_profit=parseNum(tpM[1]); }
+  else { tpM = text.match(/TP1:\s*(Rp?[\d.,]+)\s*\(([+\-\d.]+%)\)/); if (tpM){ row.take_profit=parseNum(tpM[1]); row.take_profit_pct=tpM[2]; } }
+  row.target2_price = parseNum(match1(/Target 2[^:]*:\s*(Rp?[\d.,]+)/, text));
+  let slSingle = text.match(/Stop Loss:\s*(Rp?[\d.,]+)/);
+  if (slSingle) row.stop_loss = parseNum(slSingle[1]);
+  const slDefault = text.match(/Default \(ATR\):\s*(Rp?[\d.,]+)\s*\(([+\-\d.]+%)\)/);
+  if (slDefault){ row.stop_loss=parseNum(slDefault[1]); row.stop_loss_pct=slDefault[2]; }
+  const slMod = text.match(/Moderat \(-5%\):\s*(Rp?[\d.,]+)/); if (slMod) row.sl_moderat=parseNum(slMod[1]);
+  const slKons = text.match(/Konservatif \(-3%\):\s*(Rp?[\d.,]+)/); if (slKons) row.sl_konservatif=parseNum(slKons[1]);
+  const macdM = text.match(/MACD:\s*([\-\d.]+)\s*\(Sig:\s*([\-\d.]+)\)\s*\S*\s*(Bullish|Bearish)?/);
+  if (macdM){ row.macd=parseFloat(macdM[1]); row.macd_signal_val=parseFloat(macdM[2]); row.macd_trend=macdM[3]||null; }
+  const rsiM = text.match(/RSI \(14\):\s*([\d.]+)\s*\S*\s*\(?(Overbought|Oversold)?\)?/);
+  if (rsiM){ row.rsi=parseFloat(rsiM[1]); row.rsi_label=rsiM[2]||null; }
+  const emaM = text.match(/EMA 20\/50:\s*(Rp?[\d.,]+)\s*\/\s*(Rp?[\d.,]+)\s*\S*\s*(Bullish|Bearish)?/);
+  if (emaM){ row.ema20=parseNum(emaM[1]); row.ema50=parseNum(emaM[2]); row.ema_trend=emaM[3]||null; }
+  const vwapM = text.match(/VWAP:\s*(Rp?[\d.,]+)\s*\S*\s*(Above|Below)?/);
+  if (vwapM){ row.vwap=parseNum(vwapM[1]); row.vwap_position=vwapM[2]||null; }
+  const bbM = text.match(/(?:Bollinger Bands|BB):\s*\[(Rp?[\d.,]+)\s*-\s*(Rp?[\d.,]+)\]/);
+  if (bbM){ row.bb_lower=parseNum(bbM[1]); row.bb_upper=parseNum(bbM[2]); }
+  const adxM = text.match(/ADX:\s*([\d.]+)\s*(?:\(([^)]+)\))?\s*\S*\s*(Strong|Weak)?/);
+  if (adxM){ row.adx=parseFloat(adxM[1]); row.adx_label=adxM[3]||adxM[2]||null; }
+  const atrM = text.match(/ATR(?:\s*\(Volatilitas\))?:\s*(Rp?[\d.,]+)/); if (atrM) row.atr=parseNum(atrM[1]);
+  row.chart_pattern = match1(/Chart:\s*(.+)/, text);
+  row.candle_pattern = match1(/Candle:\s*(.+)/, text);
+  row.bandar_signal = match1(/Sinyal Bandar:\s*\S*\s*(\S+)/, text);
+  row.smart_money_net = match1(/Smart Money Net:\s*([+\-][\w.,]+\s*\w*)/, text);
+  const buyerBlock = text.match(/Top Buyer:\s*\n([\s\S]*?)(?:\n\s*\n|🔴|Top Seller|📈|💡|$)/);
+  if (buyerBlock){ buyerBlock[1].split('\n').map(l=>l.trim()).filter(Boolean).slice(0,3).forEach((l,i)=>row['top_buyer_'+(i+1)]=l); }
+  const sellerBlock = text.match(/Top Seller:\s*\n([\s\S]*?)(?:\n\s*\n|📈|💡|$)/);
+  if (sellerBlock){ sellerBlock[1].split('\n').map(l=>l.trim()).filter(Boolean).slice(0,3).forEach((l,i)=>row['top_seller_'+(i+1)]=l); }
+  const betaM = text.match(/Beta:\s*([\d.]+)\s*\(([^)]+)\)\s*\|\s*Volatilitas:\s*(\d+)%/);
+  if (betaM){ row.beta=parseFloat(betaM[1]); row.beta_label=betaM[2]; row.volatilitas_pct=parseFloat(betaM[3]); }
+  const fStatus = match1(/Status:\s*\S*\s*(NET BUY ASING|NET SELL ASING|NEUTRAL)/, text); if (fStatus) row.foreign_status=fStatus;
+  const netAsingM = text.match(/Net Asing:\s*([+\-][\w.]+)\s*\(([+\-\d,]+)\s*lot\)/);
+  if (netAsingM){ row.net_asing=netAsingM[1]; row.net_asing_lot=parseNum(netAsingM[2]); }
+  const buySellM = text.match(/Buy:\s*([\d,]+)\s*lot\s*\|\s*Sell:\s*([\d,]+)\s*lot/);
+  if (buySellM){ row.foreign_buy_lot=parseNum(buySellM[1]); row.foreign_sell_lot=parseNum(buySellM[2]); }
+  const partM = text.match(/Partisipasi Asing:\s*(\d+)%/); if (partM) row.partisipasi_asing_pct=parseFloat(partM[1]);
+  const opinionM = text.match(/Analyst Opinion:\s*\n([\s\S]*?)(?:\n\s*\n|📰|🤖|$)/); if (opinionM) row.analyst_opinion=opinionM[1].trim();
+  const newsBlock = text.match(/Berita Terkait:\s*\n([\s\S]*?)(?:🤖|$)/);
+  if (newsBlock){ newsBlock[1].split('\n').map(l=>l.replace(/^•\s*/,'').trim()).filter(Boolean).slice(0,5).forEach((l,i)=>row['news_'+(i+1)]=l); }
+  const verM = text.match(/Powered by Zeta AI\s*(v[\d.]+)?/); row.bot_version = verM && verM[1] ? verM[1] : 'v1';
+  row.raw_text = text;
+  return row;
+}
+function parseResult(text, msgId, date){
+  const row={msg_id:msgId, date};
+  if (text.includes('SIGNAL CONFIRMED')){
+    row.type='TP_HIT'; row.symbol=match1(/Symbol:\s*(\S+)/, text); row.status_text=match1(/Status:\s*\S*\s*(.+)/, text);
+    // two message formats exist in the wild:
+    //  (a) old: "Entry: X -> TP: Y" + "Profit: +Z%"
+    //  (b) new: "Entry: X -> TP1: Y (+Z%)" + "Profit Terkunci: +Z%"
+    const em=text.match(/Entry:\s*(Rp?[\d.,]+)\s*→\s*TP1?:\s*(Rp?[\d.,]+)/); if (em){ row.entry=parseNum(em[1]); row.exit_price=parseNum(em[2]); }
+    row.day_high = parseNum(match1(/Day High:\s*(Rp?[\d.,]+)/, text));
+    const peakM=text.match(/Peak Tertinggi:\s*(Rp?[\d.,]+)\s*\(([+\-\d.]+%)\)/); if (peakM){ row.peak_price=parseNum(peakM[1]); row.peak_pct=peakM[2]; }
+    row.profit_pct = match1(/Profit:\s*([+\-\d.]+%)/, text) || match1(/Profit Terkunci:\s*([+\-\d.]+%)/, text);
+  } else if (text.includes('PROFIT TERKUNCI')){
+    row.type='PROFIT_LOCKED'; row.symbol=match1(/Symbol:\s*(\S+)/, text); row.status_text=match1(/Status:\s*\S*\s*(.+)/, text);
+    const em=text.match(/Entry:\s*(Rp?[\d.,]+)\s*→\s*Exit:\s*(Rp?[\d.,]+)/); if (em){ row.entry=parseNum(em[1]); row.exit_price=parseNum(em[2]); }
+    row.profit_pct = match1(/Profit Terkunci:\s*([+\-\d.]+%)/, text);
+    const peakM=text.match(/Peak Tertinggi:\s*(Rp?[\d.,]+)\s*\(([+\-\d.]+%)\)/); if (peakM){ row.peak_price=parseNum(peakM[1]); row.peak_pct=peakM[2]; }
+  } else if (text.includes('PROFIT TERUS NAIK')){
+    row.type='PROFIT_RUNNING'; row.symbol=match1(/Symbol:\s*(\S+)/, text);
+    row.entry = parseNum(match1(/Entry:\s*(Rp?[\d.,]+)/, text));
+    row.day_high = parseNum(match1(/Day High:\s*(Rp?[\d.,]+)/, text));
+    row.profit_pct = match1(/Profit Sekarang:\s*([+\-\d.]+%)/, text);
+  }
+  /* Durasi eksplisit yang tercantum di PESAN KONFIRMASI (bot versi baru) — belum ada contoh
+     JSON real-nya, jadi pola regex ini best-guess ("Durasi: X hari" / "Durasi: X jam").
+     Sesuaikan lagi begitu ada sample JSON terbaru kalau format aslinya beda. */
+  const durM = text.match(/Durasi(?:\s*Sinyal)?:\s*([\d.]+)\s*(hari|jam)/i);
+  if (durM){
+    const durVal = parseFloat(durM[1]);
+    row.duration_days_confirm = durM[2].toLowerCase()==='jam' ? durVal/24 : durVal;
+  }
+  row.raw_text = text;
+  return row;
+}
+function parseRegime(text, msgId, date){
+  const row={msg_id:msgId, date, type:'REGIME'};
+  const dm=text.match(/Regime Prediction\s*—\s*(.+)/); row.regime_date = dm? dm[1].trim(): null;
+  const pm=text.match(/Prediksi:\s*(BULLISH|BEARISH|NEUTRAL)\s*\(Score:\s*([+\-\d.]+)\)/);
+  if (pm){ row.prediction=pm[1]; row.score=parseFloat(pm[2]); }
+  const components=[]; const compRe=/[🔴🟢⚪]\s*([\w &()\/]+):\s*([+\-\d.]+%)\s*\((\d+)%\)/g; let cm;
+  while ((cm=compRe.exec(text))!==null) components.push(cm[1].trim()+': '+cm[2]+' (bobot '+cm[3]+'%)');
+  row.components = components.join(' | ') || null;
+  const commentM=text.match(/💬\s*(.+)/); row.commentary = commentM? commentM[1].trim() : null;
+  row.raw_text = text;
+  return row;
+}
+function classify(text){
+  if (text.includes('ZETA IDX STOCK SIGNAL')) return 'signal';
+  if (text.includes('SIGNAL CONFIRMED')||text.includes('PROFIT TERKUNCI')||text.includes('PROFIT TERUS NAIK')) return 'result';
+  if (text.includes('Regime Prediction')) return 'regime';
+  return 'other';
+}
+function parseTelegramExport(data){
+  const signals=[], results=[], regimes=[], others=[];
+  for (const m of data.messages){
+    if (m.type!=='message') continue;
+    const text=flatten(m.text);
+    if (!text || !text.trim()) continue;
+    const cat=classify(text);
+    if (cat==='signal') signals.push(parseSignal(text,m.id,m.date));
+    else if (cat==='result') results.push(parseResult(text,m.id,m.date));
+    else if (cat==='regime') regimes.push(parseRegime(text,m.id,m.date));
+    else others.push({msg_id:m.id, date:m.date, from:m.from||'', text});
+  }
+  return {signals, results, regimes, others};
 }
 
-async function signIn(email, password) {
-  const { error } = await sb.auth.signInWithPassword({ email, password });
-  if (error) throw error;
+/* match each signal to its outcome by symbol + date window */
+function matchTrades(signals, results){
+  const RUNNING_FRESH_DAYS = 3; // sinyal terakhir tanpa laporan apa pun dianggap RUNNING hanya jika masih dalam N hari terakhir dari data
+  let maxKnownDate = 0;
+  signals.forEach(s=>{ const t=new Date(s.date).getTime(); if (t>maxKnownDate) maxKnownDate=t; });
+  results.forEach(r=>{ const t=new Date(r.date).getTime(); if (t>maxKnownDate) maxKnownDate=t; });
+
+  const bySymbol={};
+  signals.forEach(s=>{ (bySymbol[s.symbol]=bySymbol[s.symbol]||{sig:[],res:[]}).sig.push(s); });
+  results.forEach(r=>{ if(!r.symbol) return; (bySymbol[r.symbol]=bySymbol[r.symbol]||{sig:[],res:[]}).res.push(r); });
+  const trades=[];
+  for (const symbol in bySymbol){
+    const sigs = bySymbol[symbol].sig.slice().sort((a,b)=>new Date(a.date)-new Date(b.date));
+    const resArr = bySymbol[symbol].res.slice().sort((a,b)=>new Date(a.date)-new Date(b.date));
+    sigs.forEach((s, idx)=>{
+      const sigDate = new Date(s.date);
+      const nextSigDate = idx+1 < sigs.length ? new Date(sigs[idx+1].date) : null;
+      const candidates = resArr.filter(r=>{
+        const rd = new Date(r.date);
+        return rd >= sigDate && (!nextSigDate || rd < nextSigDate);
+      });
+      let status='NO RESULT', return_pct=null, result_ref=null;
+      const terminal = candidates.find(r=>r.type==='TP_HIT'||r.type==='PROFIT_LOCKED');
+      const running = candidates.find(r=>r.type==='PROFIT_RUNNING');
+      if (terminal){ status = terminal.type==='TP_HIT' ? 'TP HIT' : 'CLOSED (LOCKED)'; return_pct=terminal.profit_pct; result_ref=terminal; }
+      else if (running){ status='RUNNING'; return_pct=running.profit_pct; result_ref=running; }
+      else if (!nextSigDate){
+        const ageDays = (maxKnownDate - sigDate.getTime()) / 86400000;
+        status = ageDays <= RUNNING_FRESH_DAYS ? 'RUNNING' : 'NO RESULT';
+      }
+
+      /* Durasi — tahap 1 (JSON saja), prioritas:
+         (1) field durasi eksplisit yang TERCANTUM DI PESAN KONFIRMASI (bot versi baru)
+         (2) kalau tidak ada field eksplisit tapi pesan konfirmasinya ADA: hitung dari
+             selisih waktu pesan sinyal → waktu pesan konfirmasi (riil, dari timestamp Telegram)
+         Kalau pesan konfirmasi tidak ditemukan sama sekali di JSON (kasus umum untuk
+         SL HIT/EXPIRED, karena publik Telegram gak pernah post itu), duration_days
+         dibiarkan null di sini — nanti DILENGKAPI di mergeWithXlsxData pakai tanggal
+         dari snapshot XLSX (jam 17:30) kalau XLSX mengonfirmasi status akhirnya. */
+      let duration_days=null, duration_source=null;
+      if (terminal){
+        if (terminal.duration_days_confirm != null){
+          duration_days = Math.round(terminal.duration_days_confirm*100)/100;
+          duration_source = 'confirm';
+        } else {
+          duration_days = Math.round(((new Date(terminal.date).getTime() - sigDate.getTime()) / 86400000)*100)/100;
+          duration_source = 'result';
+        }
+      }
+
+      trades.push(Object.assign({}, s, {status, return_pct, result_ref, source:'JSON', duration_days, duration_source}));
+    });
+  }
+  return trades.sort((a,b)=>new Date(b.date)-new Date(a.date));
 }
 
-async function signUp(email, password) {
-  const { data, error } = await sb.auth.signUp({
-    email,
-    password,
-    options: { emailRedirectTo: window.location.origin },
-  });
-  if (error) throw error;
-  return data;
-}
+/* ============================= APP STATE ============================= */
+let STATE = { signals:[], results:[], regimes:[], others:[], trades:[], filtered:[], page:1, pageSize:25, filename:'', lastXlsxRows:[] };
 
-async function signOut() {
-  await sb.auth.signOut();
-}
-
-async function resetPasswordForEmail(email) {
-  const { error } = await sb.auth.resetPasswordForEmail(email, {
-    redirectTo: window.location.origin,
-  });
-  if (error) throw error;
-}
-
-async function updatePassword(newPassword) {
-  const { error } = await sb.auth.updateUser({ password: newPassword });
-  if (error) throw error;
-}
-
-function onAuthStateChange(callback) {
-  sb.auth.onAuthStateChange((event, session) => callback(event, session));
-}
-
-// --- ISSI list (fitur khusus IDX ISSI Screener, tidak ada di Web Signal) ---
-async function getIssiTickers() {
-  const { data, error } = await sb.from('issi_list').select('ticker');
-  if (error) throw error;
-  return (data || []).map((r) => r.ticker);
-}
-
-async function setIssiTickers(tickers) {
-  const session = await getSession();
-  if (!session) throw new Error('Belum login');
-  const userId = session.user.id;
-
-  const { error: delErr } = await sb.from('issi_list').delete().eq('user_id', userId);
-  if (delErr) throw delErr;
-
-  if (tickers.length === 0) return [];
-  const rows = tickers.map((ticker) => ({ ticker, user_id: userId }));
-  const { data, error } = await sb.from('issi_list').insert(rows).select('ticker');
-  if (error) throw error;
-  return (data || []).map((r) => r.ticker);
-}
-
-// --- Baca tabel hasil sync (dipakai buat render grid) ---
-async function listSignals(max = 200) {
-  const { data, error } = await sb
-    .from('signals')
-    .select('*')
-    .order('signal_timestamp', { ascending: false })
-    .limit(max);
-  if (error) throw error;
-  return data || [];
-}
-
-async function listConfirmations(max = 200) {
-  const { data, error } = await sb
-    .from('confirmations')
-    .select('*')
-    .order('created_at', { ascending: false })
-    .limit(max);
-  if (error) throw error;
-  return data || [];
-}
-
-async function listMarketRegime(max = 60) {
-  const { data, error } = await sb
-    .from('market_regime')
-    .select('*')
-    .order('date', { ascending: false })
-    .limit(max);
-  if (error) throw error;
-  return data || [];
-}
-
-// ============================================================
-// CACHE LOKAL (IndexedDB) - hindari sync+query ulang tiap kali app
-// dibuka/direfresh kalau data di cloud belum berubah. Pola ini disamakan
-// dengan app "Web Signal" (sumber data trades_data): simpan hasil signals
-// + timestamp trades_data.updated_at yang terakhir dipakai, lalu pas
-// load berikutnya cek dulu updated_at cloud (query kecil) - kalau belum
-// berubah, langsung pakai cache lokal tanpa upsert/read besar ke tabel
-// signals/confirmations/market_regime.
-// ============================================================
-const DB_NAME = 'issi_screener_db';
+/* ============================= PERSISTENCE (IndexedDB) =============================
+   Data disimpan lokal di browser (bukan di server manapun) supaya tidak perlu upload
+   ulang result.json setiap kali halaman dibuka. Pakai IndexedDB (bukan localStorage)
+   karena data hasil parse bisa beberapa MB, di atas batas aman localStorage. */
+const DB_NAME = 'idx_signal_parser_db';
 const STORE_NAME = 'state';
 const STATE_KEY = 'current';
 
-function openDB() {
-  return new Promise((resolve, reject) => {
-    if (!window.indexedDB) { reject(new Error('IndexedDB tidak didukung browser ini')); return; }
+function openDB(){
+  return new Promise((resolve, reject)=>{
+    if (!window.indexedDB){ reject(new Error('IndexedDB tidak didukung browser ini')); return; }
     const req = indexedDB.open(DB_NAME, 1);
-    req.onupgradeneeded = () => { req.result.createObjectStore(STORE_NAME); };
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
+    req.onupgradeneeded = ()=>{ req.result.createObjectStore(STORE_NAME); };
+    req.onsuccess = ()=> resolve(req.result);
+    req.onerror = ()=> reject(req.error);
   });
 }
 
-async function saveSignalsToDB(signals, sourceUpdatedAt, counts = {}) {
-  try {
+async function saveStateToDB(){
+  try{
     const db = await openDB();
-    await new Promise((resolve, reject) => {
+    const payload = { signals:STATE.signals, results:STATE.results, regimes:STATE.regimes,
+                       others:STATE.others, trades:STATE.trades, filename:STATE.filename, lastXlsxRows:STATE.lastXlsxRows, savedAt:Date.now() };
+    await new Promise((resolve, reject)=>{
       const tx = db.transaction(STORE_NAME, 'readwrite');
-      tx.objectStore(STORE_NAME).put({ signals, sourceUpdatedAt, counts }, STATE_KEY);
-      tx.oncomplete = resolve;
-      tx.onerror = () => reject(tx.error);
+      tx.objectStore(STORE_NAME).put(payload, STATE_KEY);
+      tx.oncomplete = resolve; tx.onerror = ()=>reject(tx.error);
     });
-  } catch (err) {
-    console.warn('Gagal menyimpan cache lokal:', err);
+  } catch(err){
+    console.warn('Gagal menyimpan data ke browser:', err);
   }
 }
 
-async function loadSignalsFromDB() {
-  try {
+async function loadStateFromDB(){
+  try{
     const db = await openDB();
-    return await new Promise((resolve, reject) => {
+    return await new Promise((resolve, reject)=>{
       const tx = db.transaction(STORE_NAME, 'readonly');
       const req = tx.objectStore(STORE_NAME).get(STATE_KEY);
-      req.onsuccess = () => resolve(req.result || null);
-      req.onerror = () => reject(req.error);
+      req.onsuccess = ()=> resolve(req.result || null);
+      req.onerror = ()=> reject(req.error);
     });
-  } catch (err) {
-    console.warn('Gagal membaca cache lokal:', err);
+  } catch(err){
+    console.warn('Gagal membaca data tersimpan:', err);
     return null;
   }
 }
 
-// ============================================================
-// SYNC OTOMATIS dari trades_data (Web Signal) - lihat field mapping
-// dari fungsi parseSignal/parseResult/parseRegime di Web Signal.
-// ============================================================
-
-function protoSignalToRow(s, userId, issiSet) {
-  return {
-    user_id: userId,
-    msg_id: s.msg_id ?? null,
-    ticker: s.symbol,
-    signal_type: s.signal_type,
-    source_format: s.bot_version || null,
-    signal_timestamp: s.date ? new Date(s.date).toISOString() : null,
-    entry_price: s.entry_price ?? null,
-    tp1_price: s.take_profit ?? null,
-    tp1_pct: null, // tidak ada di data Web Signal untuk format sinyal ini
-    tp2_price: s.target2_price ?? null,
-    tp2_pct: null,
-    sl_default_price: s.stop_loss ?? null,
-    sl_default_pct: null,
-    sl_moderat_price: null,
-    sl_konservatif_price: null,
-    confidence_score: null, // format sinyal ini belum ada Confidence Score
-    confidence_label: null,
-    is_halal: s.symbol ? issiSet.has(String(s.symbol).toUpperCase()) : false,
-    detail: {
-      technical: {
-        macd: s.macd != null ? { value: s.macd, signal: s.macd_signal_val, status: s.macd_trend } : null,
-        rsi: s.rsi != null ? { value: s.rsi, status: s.rsi_label } : null,
-        ema: s.ema20 != null ? { ema20: s.ema20, ema50: s.ema50, status: s.ema_trend } : null,
-        vwap: s.vwap != null ? { value: s.vwap, status: s.vwap_position } : null,
-        adx: s.adx != null ? { value: s.adx, status: s.adx_label } : null,
-        bb: s.bb_lower != null ? { lower: s.bb_lower, upper: s.bb_upper } : null,
-        atr: s.atr ?? null,
-      },
-      pattern: { chart: s.chart_pattern || null, candle: s.candle_pattern || null },
-      bandarmology: {
-        // top_buyer/seller di Web Signal berupa string siap-tampil, bukan object terpisah
-        sinyalBandar: s.bandar_signal ? { label: s.bandar_signal } : null,
-        smartMoneyNet: s.smart_money_net || null,
-        topBuyer: [s.top_buyer_1, s.top_buyer_2, s.top_buyer_3].filter(Boolean),
-        topSeller: [s.top_seller_1, s.top_seller_2, s.top_seller_3].filter(Boolean),
-      },
-      // Foreign flow (asing) - khusus data Web Signal, tidak ada di format sinyal lain
-      foreignFlow: s.foreign_status ? {
-        status: s.foreign_status,
-        netAsing: s.net_asing || null,
-        netAsingLot: s.net_asing_lot ?? null,
-        buyLot: s.foreign_buy_lot ?? null,
-        sellLot: s.foreign_sell_lot ?? null,
-        partisipasiPct: s.partisipasi_asing_pct ?? null,
-      } : null,
-      betaVolatilitas: null, // tidak ada di format sinyal ini
-      analystOpinion: s.analyst_opinion || null,
-      news: [],
-      confidenceReasons: s.confidence_reasons ? [{ reason: s.confidence_reasons }] : [],
-      marketWarning: s.market_warning || null,
-    },
-    raw_text: s.raw_text || null,
-  };
-}
-
-// "trades" adalah array yang lebih baru/lengkap dari Web Signal (format v4:
-// ada Confidence Score, SL 3-tier, TP1/SL dengan %, dan berita) - beda dari
-// array "signals" yang formatnya lebih lama/sederhana. Konstruksi mirip
-// protoSignalToRow, tapi field-field yang di sini "signals" nggak punya.
-function protoTradeToRow(t, userId, issiSet) {
-  const row = protoSignalToRow(t, userId, issiSet);
-  return {
-    ...row,
-    tp1_pct: t.take_profit_pct ?? null,
-    sl_default_pct: t.stop_loss_pct ?? null,
-    sl_moderat_price: t.sl_moderat ?? null,
-    sl_konservatif_price: t.sl_konservatif ?? null,
-    confidence_score: t.confidence_score ?? null,
-    confidence_label: t.confidence_label ?? null,
-    detail: {
-      ...row.detail,
-      // confidence_reasons di "trades" berupa 1 string gabungan (dipisah ";"),
-      // beda dari format lain yang sudah array of {reason}. Dipecah biar konsisten.
-      confidenceReasons: t.confidence_reasons
-        ? String(t.confidence_reasons).split(';').map((s) => ({ reason: s.trim() })).filter((r) => r.reason)
-        : [],
-      news: [t.news_1, t.news_2, t.news_3, t.news_4, t.news_5].filter(Boolean),
-    },
-  };
-}
-
-const CONFIRMATION_TYPE_MAP = { TP_HIT: 'tp_hit', PROFIT_LOCKED: 'closed', PROFIT_RUNNING: 'ongoing' };
-
-function protoResultToRow(r, userId) {
-  const entry = r.entry ?? null;
-  const dayHigh = r.day_high ?? null;
-  const peakPct = entry && dayHigh ? `${(((dayHigh - entry) / entry) * 100).toFixed(1)}%` : null;
-
-  return {
-    user_id: userId,
-    msg_id: r.msg_id ?? null,
-    signal_id: null, // di-isi lewat matching setelah semua signal ke-upsert
-    ticker: r.symbol,
-    confirmation_type: CONFIRMATION_TYPE_MAP[r.type] || r.type,
-    status: r.status_text || null,
-    call_watchlist_timestamp: null, // Web Signal tidak menyertakan field ini
-    durasi: null,
-    entry_price: entry,
-    exit_price: r.exit_price ?? null,
-    profit_pct: r.profit_pct || null,
-    peak_price: dayHigh,
-    peak_pct: peakPct,
-    raw_text: r.raw_text || null,
-    // PENTING: pakai timestamp kejadian asli (kapan TP/SL beneran ke-hit),
-    // bukan biarkan default now() - kalau dibiarkan default, urutan histori
-    // bakal salah total (keurutan berdasar jam sync, bukan jam kejadian).
-    _eventTimestamp: r.date ? new Date(r.date).toISOString() : null,
-  };
-}
-
-function protoRegimeToRow(reg, userId) {
-  if (!reg.date) return null;
-  return {
-    date: new Date(reg.date).toISOString().slice(0, 10),
-    user_id: userId,
-    prediction: reg.prediction || null,
-    score: reg.score ?? null,
-    strength_emoji: null,
-    // Web Signal tidak memecah index scoring/wall street/komoditas jadi field
-    // terpisah - semuanya digabung jadi 1 string "components". Disimpan apa
-    // adanya di sini (bukan di-parse ulang jadi array), karena sudah berupa
-    // ringkasan siap-tampil.
-    index_scoring: reg.components ? { raw: reg.components } : null,
-    wall_street: null,
-    komoditas: null,
-    suspended: [],
-    uma: [],
-    summary: reg.commentary || null,
-    raw_text: reg.raw_text || null,
-  };
-}
-
-/**
- * Sync dari trades_data.payload ke tabel signals/confirmations/market_regime.
- * IDEMPOTENT - pakai upsert dengan onConflict msg_id (atau date buat regime),
- * jadi aman dipanggil berkali-kali (misal tiap app dibuka) tanpa bikin dobel.
- * Cukup 1 read (trades_data) + beberapa upsert - hemat, aman buat free tier.
- */
-async function syncFromWebSignal() {
-  const session = await getSession();
-  if (!session) throw new Error('Belum login');
-  const userId = session.user.id;
-
-  const { data: protoRow, error: fetchErr } = await sb
-    .from('trades_data')
-    .select('payload')
-    .eq('user_id', userId)
-    .maybeSingle();
-  if (fetchErr) throw fetchErr;
-  if (!protoRow || !protoRow.payload) {
-    return { signals: 0, confirmations: 0, regimes: 0, skipped: true };
-  }
-
-  const payload = protoRow.payload;
-  const issiTickers = await getIssiTickers();
-  const issiSet = new Set(issiTickers.map((t) => t.toUpperCase()));
-
-  const signalRows = (payload.signals || []).map((s) => protoSignalToRow(s, userId, issiSet));
-  const tradeRows = (payload.trades || []).map((t) => protoTradeToRow(t, userId, issiSet));
-  const resultRows = (payload.results || []).map((r) => protoResultToRow(r, userId));
-  const regimeRows = (payload.regimes || []).map((r) => protoRegimeToRow(r, userId)).filter(Boolean);
-
-  const summary = { signals: 0, confirmations: 0, regimes: 0, skipped: false };
-
-  // PENTING: Postgres upsert akan ERROR ("cannot affect row a second time")
-  // kalau ada msg_id yang sama muncul 2x dalam satu batch upsert. Karena
-  // "signals" dan "trades" bisa jadi overlap (msg_id yang sama tercatat di
-  // keduanya), harus di-dedupe dulu di JS sebelum dikirim - bukan cuma
-  // digabung mentah. "trades" (data lebih lengkap) menang kalau ada overlap.
-  const byMsgId = new Map();
-  for (const row of signalRows) {
-    byMsgId.set(row.msg_id ?? Symbol(), row);
-  }
-  for (const row of tradeRows) {
-    byMsgId.set(row.msg_id ?? Symbol(), row); // overwrite kalau msg_id sama
-  }
-  const allSignalRows = [...byMsgId.values()];
-
-  let upsertedSignals = [];
-  if (allSignalRows.length) {
-    const { data, error } = await sb
-      .from('signals')
-      .upsert(allSignalRows, { onConflict: 'msg_id,user_id', ignoreDuplicates: false })
-      .select('id, ticker, signal_timestamp, msg_id');
-    if (error) throw error;
-    upsertedSignals = data || [];
-    summary.signals = upsertedSignals.length;
-  }
-
-  if (resultRows.length) {
-    // Cari signal_id yang cocok: ticker sama DAN signal_timestamp <= waktu
-    // kejadian confirmation ini (bukan asal ambil sinyal terbaru untuk ticker
-    // itu - itu bisa salah kalau ada sinyal baru untuk ticker yang sama yang
-    // justru muncul SETELAH confirmation ini terjadi).
-    for (const row of resultRows) {
-      if (!row.ticker) continue;
-      const eventTime = row._eventTimestamp ? new Date(row._eventTimestamp) : null;
-      const candidates = upsertedSignals
-        .filter((s) => {
-          if (s.ticker !== row.ticker || !s.signal_timestamp) return false;
-          if (!eventTime) return true; // kalau confirmation tidak ada timestamp, tidak bisa filter waktu
-          return new Date(s.signal_timestamp) <= eventTime;
-        })
-        .sort((a, b) => new Date(b.signal_timestamp) - new Date(a.signal_timestamp));
-      row.signal_id = candidates.length ? candidates[0].id : null;
-      // Pindahkan _eventTimestamp jadi created_at eksplisit (bukan biarkan
-      // default now()), lalu buang field internal ini sebelum dikirim ke DB.
-      if (row._eventTimestamp) row.created_at = row._eventTimestamp;
-      delete row._eventTimestamp;
+async function clearSavedData(){
+  if (!confirm('Hapus data tersimpan (lokal & cloud)? File asli tidak terpengaruh, kamu bisa upload ulang kapan saja.')) return;
+  try{
+    const db = await openDB();
+    await new Promise((resolve, reject)=>{
+      const tx = db.transaction(STORE_NAME, 'readwrite');
+      tx.objectStore(STORE_NAME).delete(STATE_KEY);
+      tx.oncomplete = resolve; tx.onerror = ()=>reject(tx.error);
+    });
+  } catch(err){ console.warn('Gagal menghapus data lokal:', err); }
+  try{
+    if (sb){
+      const { data: { session } } = await sb.auth.getSession();
+      if (session){ await sb.from('trades_data').delete().eq('user_id', session.user.id); }
     }
-    const { data, error } = await sb
-      .from('confirmations')
-      .upsert(resultRows, { onConflict: 'msg_id,user_id', ignoreDuplicates: false })
-      .select();
-    if (error) throw error;
-    summary.confirmations = (data || []).length;
-  }
-
-  if (regimeRows.length) {
-    const { data, error } = await sb
-      .from('market_regime')
-      .upsert(regimeRows, { onConflict: 'date,user_id' })
-      .select();
-    if (error) throw error;
-    summary.regimes = (data || []).length;
-  }
-
-  return summary;
+  } catch(err){ console.warn('Gagal menghapus data cloud:', err); }
+  STATE = { signals:[], results:[], regimes:[], others:[], trades:[], filtered:[], page:1, pageSize:25, filename:'' };
+  document.getElementById('dashboard').style.display='none';
+  document.getElementById('emptyState').style.display='block';
+  updateSyncBadge('offline','Belum ada data');
 }
 
+async function restoreIfSaved(){
+  const saved = await loadStateFromDB();
+  if (!saved || !saved.trades || !saved.trades.length) return false;
+  STATE.signals=saved.signals; STATE.results=saved.results; STATE.regimes=saved.regimes;
+  STATE.others=saved.others; STATE.trades=saved.trades; STATE.filename=saved.filename; STATE.lastXlsxRows=saved.lastXlsxRows||[];
+  STATE.filtered = STATE.trades.slice();
+  STATE.__localSavedAt = saved.savedAt || null;
+  renderAll();
+  const el = document.getElementById('syncBadge'), txt = document.getElementById('syncBadgeText');
+  if (el && txt){
+    el.className = 'sync-badge sync-offline';
+    const ts = saved.savedAt ? new Date(saved.savedAt) : null;
+    const sameDay = ts && ts.toDateString() === new Date().toDateString();
+    const timeStr = ts ? (sameDay ? ts.toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit'}) : ts.toLocaleDateString('id-ID',{day:'2-digit',month:'2-digit'})+' '+ts.toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit'})) : '?';
+    txt.textContent = '📦 Data lokal per '+timeStr;
+    el.title = 'Belum sinkron ke cloud (offline/belum login) — status sinkronisasi ke cloud';
+  }
+  return true;
+}
 
-// ---------- 2. APP LOGIC (UI WIRING) ----------
+/* ============================= CLOUD SYNC (Supabase) =============================
+   Login supaya jurnal tersimpan online (tabel trades_data, 1 baris per user,
+   dilindungi row-level security jadi cuma pemilik akun yang bisa baca/tulis). */
+const SUPABASE_URL = 'https://gfxhtpqzebxycijdnpjp.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_BXkSOULyV06I6N6DhIIAdw_TJXQUGOS';
+let sb = null;
+try{ sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY); }
+catch(err){ console.warn('Gagal load Supabase client:', err); }
 
-const els = {
-  authScreen: document.getElementById('authScreen'),
-  appRoot: document.getElementById('appRoot'),
-  authFormNormal: document.getElementById('authFormNormal'),
-  authFormForgot: document.getElementById('authFormForgot'),
-  authFormRecovery: document.getElementById('authFormRecovery'),
-  tabLogin: document.getElementById('tabLogin'),
-  tabSignup: document.getElementById('tabSignup'),
-  authEmail: document.getElementById('authEmail'),
-  authPassword: document.getElementById('authPassword'),
-  authSubmitBtn: document.getElementById('authSubmitBtn'),
-  authMsg: document.getElementById('authMsg'),
-  btnLogout: document.getElementById('btnLogout'),
-  btnForgotPassword: document.getElementById('btnForgotPassword'),
-  forgotEmail: document.getElementById('forgotEmail'),
-  btnSendReset: document.getElementById('btnSendReset'),
-  btnBackToLogin: document.getElementById('btnBackToLogin'),
-  newPassword: document.getElementById('newPassword'),
-  btnSetNewPassword: document.getElementById('btnSetNewPassword'),
-
-  btnRefresh: document.getElementById('btnRefresh'),
-  signalsGrid: document.getElementById('signalsGrid'),
-  signalCount: document.getElementById('signalCount'),
-  syncStatus: document.getElementById('syncStatus'),
-  emptyState: document.getElementById('emptyState'),
-  filterHalal: document.getElementById('filterHalal'),
-  paginationControls: document.getElementById('paginationControls'),
-  btnLoadMore: document.getElementById('btnLoadMore'),
-  paginationInfo: document.getElementById('paginationInfo'),
-
-  btnManageIssi: document.getElementById('btnManageIssi'),
-  issiModal: document.getElementById('issiModal'),
-  btnCloseIssiModal: document.getElementById('btnCloseIssiModal'),
-  issiInput: document.getElementById('issiInput'),
-  btnSaveIssi: document.getElementById('btnSaveIssi'),
-  issiStatus: document.getElementById('issiStatus'),
-};
-
-let currentSignals = [];
-let currentFilter = 'halal';
-let issiListEmpty = false;
-const PAGE_SIZE = 40; // batasi render kartu per batch, sisanya lewat tombol "Lebih banyak"
-let visibleCount = PAGE_SIZE;
-// Untuk screening harian, sinyal lama nggak relevan - jadi query ke Supabase memang
-// sengaja dibatasi ke N sinyal TERBARU (bukan seluruh histori). Kalau nanti ternyata
-// butuh histori lebih panjang, ubah angka ini saja.
-const QUERY_LIMIT = 200;
-
-// ============================================================
-// AUTH
-// ============================================================
 let authMode = 'login';
-
-function showAuthMode(mode) {
-  els.authFormNormal.hidden = mode !== 'normal';
-  els.authFormForgot.hidden = mode !== 'forgot';
-  els.authFormRecovery.hidden = mode !== 'recovery';
-  els.authMsg.textContent = '';
-  els.authMsg.className = 'auth-msg';
-}
-
-els.btnForgotPassword.addEventListener('click', () => {
-  els.forgotEmail.value = els.authEmail.value;
-  showAuthMode('forgot');
-});
-els.btnBackToLogin.addEventListener('click', () => showAuthMode('normal'));
-
-els.btnSendReset.addEventListener('click', async () => {
-  const email = els.forgotEmail.value.trim();
-  if (!email) return;
-  els.btnSendReset.disabled = true;
-  try {
-    await resetPasswordForEmail(email);
-    els.authMsg.textContent = 'Link reset password dikirim, cek email kamu.';
-    els.authMsg.className = 'auth-msg ok';
-  } catch (err) {
-    els.authMsg.textContent = err.message || 'Gagal mengirim, coba lagi.';
-    els.authMsg.className = 'auth-msg err';
-  } finally {
-    els.btnSendReset.disabled = false;
-  }
-});
-
-els.btnSetNewPassword.addEventListener('click', async () => {
-  const newPass = els.newPassword.value;
-  if (!newPass || newPass.length < 6) {
-    els.authMsg.textContent = 'Password minimal 6 karakter.';
-    els.authMsg.className = 'auth-msg err';
-    return;
-  }
-  els.btnSetNewPassword.disabled = true;
-  try {
-    await updatePassword(newPass);
-    els.authMsg.textContent = 'Password berhasil diganti. Masuk ke aplikasi...';
-    els.authMsg.className = 'auth-msg ok';
-    setTimeout(() => enterApp(), 1000);
-  } catch (err) {
-    els.authMsg.textContent = err.message || 'Gagal mengganti password.';
-    els.authMsg.className = 'auth-msg err';
-  } finally {
-    els.btnSetNewPassword.disabled = false;
-  }
-});
-
-onAuthStateChange((event) => {
-  if (event === 'PASSWORD_RECOVERY') {
-    els.authScreen.hidden = false;
-    els.appRoot.hidden = true;
-    showAuthMode('recovery');
-  }
-});
-
-function switchAuthTab(mode) {
+function switchAuthTab(mode){
   authMode = mode;
-  els.tabLogin.classList.toggle('active', mode === 'login');
-  els.tabSignup.classList.toggle('active', mode === 'signup');
-  els.authSubmitBtn.textContent = mode === 'login' ? 'Masuk' : 'Daftar';
-  els.authMsg.textContent = '';
-  els.authMsg.className = 'auth-msg';
+  document.getElementById('tabLogin').classList.toggle('active', mode==='login');
+  document.getElementById('tabSignup').classList.toggle('active', mode==='signup');
+  document.getElementById('authSubmitBtn').textContent = mode==='login' ? 'Masuk' : 'Daftar';
+  document.getElementById('authMsg').textContent = '';
+  document.getElementById('authMsg').className = 'auth-msg';
 }
-els.tabLogin.addEventListener('click', () => switchAuthTab('login'));
-els.tabSignup.addEventListener('click', () => switchAuthTab('signup'));
 
-els.authSubmitBtn.addEventListener('click', async () => {
-  const email = els.authEmail.value.trim();
-  const password = els.authPassword.value;
-  els.authMsg.className = 'auth-msg';
-  els.authMsg.textContent = '';
-  if (!email || !password) {
-    els.authMsg.textContent = 'Isi email dan password dulu.';
-    els.authMsg.className = 'auth-msg err';
-    return;
-  }
-  els.authSubmitBtn.disabled = true;
-  try {
-    if (authMode === 'login') {
-      await signIn(email, password);
-      await enterApp();
+async function doAuthSubmit(){
+  const email = document.getElementById('authEmail').value.trim();
+  const password = document.getElementById('authPassword').value;
+  const msgEl = document.getElementById('authMsg');
+  msgEl.className = 'auth-msg'; msgEl.textContent = '';
+  if (!email || !password){ msgEl.textContent = 'Isi email dan password dulu.'; msgEl.className='auth-msg err'; return; }
+  if (!sb){ msgEl.textContent = 'Layanan login gagal dimuat. Cek koneksi internet.'; msgEl.className='auth-msg err'; return; }
+
+  const submitBtn = document.getElementById('authSubmitBtn');
+  submitBtn.disabled = true; submitBtn.textContent = '...';
+  try{
+    if (authMode === 'login'){
+      const { error } = await sb.auth.signInWithPassword({ email, password });
+      if (error) throw error;
+      await onAuthReady();
     } else {
-      const data = await signUp(email, password);
-      if (data.session) {
-        await enterApp();
+      const { data, error } = await sb.auth.signUp({ email, password });
+      if (error) throw error;
+      if (data.session){
+        await onAuthReady();
       } else {
-        els.authMsg.textContent = 'Akun dibuat. Cek email untuk verifikasi, lalu login.';
-        els.authMsg.className = 'auth-msg ok';
+        msgEl.textContent = 'Akun dibuat. Cek email kamu untuk verifikasi, lalu login.';
+        msgEl.className = 'auth-msg ok';
         switchAuthTab('login');
       }
     }
-  } catch (err) {
-    els.authMsg.textContent = err.message || 'Gagal, coba lagi.';
-    els.authMsg.className = 'auth-msg err';
-  } finally {
-    els.authSubmitBtn.disabled = false;
+  } catch(err){
+    msgEl.textContent = err.message || 'Gagal, coba lagi.';
+    msgEl.className = 'auth-msg err';
+  } finally{
+    submitBtn.disabled = false;
+    submitBtn.textContent = authMode==='login' ? 'Masuk' : 'Daftar';
   }
-});
-
-els.btnLogout.addEventListener('click', async () => {
-  await signOut();
-  els.appRoot.hidden = true;
-  els.authScreen.hidden = false;
-});
-
-async function enterApp() {
-  els.authScreen.hidden = true;
-  els.appRoot.hidden = false;
-  await syncAndLoad();
 }
 
-(async function init() {
-  const session = await getSession();
-  if (session) {
-    await enterApp();
+async function doLogout(){
+  if (sb) await sb.auth.signOut();
+  STATE = { signals:[], results:[], regimes:[], others:[], trades:[], filtered:[], page:1, pageSize:25, filename:'' };
+  document.getElementById('dashboard').style.display='none';
+  document.getElementById('fileControls').style.display='none';
+  document.getElementById('emptyState').style.display='none';
+  document.getElementById('logoutBtn').style.display='none';
+  document.getElementById('userEmailTag').style.display='none';
+  document.getElementById('authScreen').style.display='block';
+  updateSyncBadge('offline','Belum login');
+}
+
+function updateSyncBadge(state, extra){
+  const el = document.getElementById('syncBadge');
+  const txt = document.getElementById('syncBadgeText');
+  if (!el || !txt) return;
+  // 'loading' pakai visual sama kayak 'syncing' (kuning, pulsing) tapi labelnya beda —
+  // biar gak kelihatan seolah "menyimpan" padahal lagi ambil data dari cloud.
+  el.className = 'sync-badge sync-'+(state==='loading' ? 'syncing' : state);
+  if (state==='syncing'){
+    txt.textContent = 'Menyimpan ke cloud...';
+  } else if (state==='loading'){
+    txt.textContent = 'Memuat dari cloud...';
+  } else if (state==='ok'){
+    // extra.loadedAt = timestamp ASLI dari kolom updated_at pas ambil data cloud (bukan jam sekarang).
+    // Tanpa extra (dipanggil setelah save) berarti memang baru saja disimpan, jam sekarang valid.
+    const isLoad = extra && extra.loadedAt;
+    const ts = isLoad ? new Date(extra.loadedAt) : new Date();
+    const sameDay = ts.toDateString() === new Date().toDateString();
+    const timeStr = sameDay
+      ? ts.toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit'})
+      : ts.toLocaleDateString('id-ID',{day:'2-digit',month:'2-digit'})+' '+ts.toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit'});
+    txt.textContent = (isLoad ? '☁ Data cloud per ' : '☁ Tersimpan · ') + timeStr;
+  } else if (state==='error'){
+    txt.textContent = '⚠ Gagal sync — klik retry';
   } else {
-    els.authScreen.hidden = false;
+    txt.textContent = (typeof extra === 'string' ? extra : null) || 'Offline';
   }
-})();
-
-// ============================================================
-// MODAL (klik-luar + Esc)
-// ============================================================
-function openModal(modalEl) { modalEl.hidden = false; }
-function closeModal(modalEl) { modalEl.hidden = true; }
-els.issiModal.addEventListener('click', (e) => {
-  if (e.target === els.issiModal) closeModal(els.issiModal);
-});
-document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape' && !els.issiModal.hidden) closeModal(els.issiModal);
-});
-
-els.btnManageIssi.addEventListener('click', async () => {
-  openModal(els.issiModal);
-  const tickers = await getIssiTickers();
-  els.issiInput.value = tickers.join('\n');
-});
-els.btnCloseIssiModal.addEventListener('click', () => closeModal(els.issiModal));
-
-els.btnSaveIssi.addEventListener('click', async () => {
-  const tickers = els.issiInput.value.split(/[\n,]/).map((t) => t.trim()).filter(Boolean);
-  els.issiStatus.textContent = 'Menyimpan...';
-  try {
-    const saved = await setIssiTickers(tickers);
-    issiListEmpty = saved.length === 0;
-    els.issiStatus.textContent = `Tersimpan: ${saved.length} ticker.`;
-    // forceFull: true - daftar ISSI berubah tapi trades_data.updated_at belum
-    // tentu ikut berubah, jadi cache-check biasa bisa salah nge-skip sync di sini.
-    await syncAndLoad({ forceFull: true });
-  } catch (err) {
-    els.issiStatus.textContent = `Error: ${err.message}`;
-  }
-});
-
-// ============================================================
-// SYNC + RENDER SIGNALS GRID
-// ============================================================
-function formatRupiah(n) {
-  if (n === null || n === undefined) return '-';
-  return 'Rp' + Number(n).toLocaleString('id-ID');
-}
-function pctClass(pct) {
-  if (!pct) return '';
-  return String(pct).trim().startsWith('-') ? 'pct-neg' : 'pct-pos';
-}
-function formatTimestamp(iso) {
-  if (!iso) return '-';
-  const d = new Date(iso);
-  return d.toLocaleString('id-ID', {
-    timeZone: 'Asia/Makassar', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit',
-  }) + ' WITA';
-}
-function bandarColor(bandarmology) {
-  const label = bandarmology?.sinyalBandar?.label?.toUpperCase();
-  if (label === 'BUY') return 'var(--accent-halal)';
-  if (label === 'SELL') return 'var(--accent-red)';
-  return 'var(--accent-neutral)';
+  el.title = state==='error' ? 'Klik untuk coba sync ulang' : 'Status sinkronisasi ke cloud';
+  el.onclick = state==='error' ? saveStateToSupabase : null;
 }
 
-// --- Lampu indikator (emoji) tidak lagi tersimpan sebagai field terpisah di
-// Supabase (payload.trades cuma punya confidence_score/bandar_signal numerik/
-// teks polos) - tapi raw_text tiap sinyal masih menyimpan teks asli bot lengkap
-// dengan emoji-nya. Extract dari sana, regex sama persis dengan lib/parser.js V1. ---
-function extractConfidenceEmoji(rawText) {
-  if (!rawText) return '';
-  const m = rawText.match(/Confidence Score:\s*(\S+)\s*\d+\/10/);
-  return m ? m[1] : '';
-}
-function extractBandarEmoji(rawText) {
-  if (!rawText) return '';
-  const m = rawText.match(/Sinyal Bandar:\s*(\S+)\s*\w+/);
-  return m ? m[1] : '';
-}
-
-function renderCard(signal) {
-  const detail = signal.detail || {};
-  const barColor = bandarColor(detail.bandarmology);
-  const halalBadge = signal.is_halal
-    ? '<span class="badge-halal">HALAL</span>'
-    : '<span class="badge-nonhalal">NON-HALAL</span>';
-
-  const confidenceEmoji = extractConfidenceEmoji(signal.raw_text);
-  const confidenceText = signal.confidence_score != null
-    ? `${confidenceEmoji ? confidenceEmoji + ' ' : ''}${signal.confidence_score}/10 · ${signal.confidence_label || ''}`
-    : 'belum ada skor';
-
-  const bandarmology = detail.bandarmology;
-  const bandarEmoji = extractBandarEmoji(signal.raw_text);
-  const bandarText = bandarmology?.status
-    ? bandarmology.status
-    : bandarmology?.sinyalBandar
-    ? `${bandarEmoji ? bandarEmoji + ' ' : ''}${bandarmology.sinyalBandar.label} · net ${bandarmology.smartMoneyNet || '-'} lot`
-    : 'data bandarmology tidak tersedia';
-
-  const detailId = `detail-${signal.id}`;
-
-  const technicalRows = detail.technical
-    ? Object.entries(detail.technical)
-        .map(([key, val]) => {
-          if (!val) return '';
-          if (key === 'bb') return `<div><dt>BB</dt> Rp${val.lower?.toLocaleString('id-ID')} - Rp${val.upper?.toLocaleString('id-ID')}</div>`;
-          if (key === 'atr') return `<div><dt>ATR</dt> Rp${val?.toLocaleString('id-ID')}</div>`;
-          if (typeof val === 'object') {
-            const parts = Object.entries(val)
-              .filter(([k]) => k !== 'emoji')
-              .map(([k, v]) => `${k}: ${v ?? '-'}`)
-              .join(' · ');
-            return `<div><dt>${key.toUpperCase()}</dt> ${parts}</div>`;
-          }
-          return '';
-        })
-        .join('')
-    : '<div>Tidak ada data teknikal</div>';
-
-  const card = document.createElement('div');
-  card.className = 'card';
-  card.style.setProperty('--bar-color', barColor);
-  card.innerHTML = `
-    <div class="card__head">
-      <div class="card__ticker">
-        <a href="https://stockbit.com/symbol/${signal.ticker}/chartbit" target="_blank" rel="noopener noreferrer" class="card__ticker-link">${signal.ticker}</a>
-        ${halalBadge}
-      </div>
-      <div class="card__meta">
-        <div class="card__confidence">${confidenceText}</div>
-        <div class="card__timestamp">${formatTimestamp(signal.signal_timestamp)}</div>
-      </div>
-    </div>
-    <div class="card__prices">
-      <div class="price-block">
-        <div class="price-block__label">Entry</div>
-        <div class="price-block__value">${formatRupiah(signal.entry_price)}</div>
-      </div>
-      <div class="price-block">
-        <div class="price-block__label">TP1</div>
-        <div class="price-block__value">${formatRupiah(signal.tp1_price)}</div>
-        <div class="price-block__pct ${pctClass(signal.tp1_pct)}">${signal.tp1_pct || '-'}</div>
-      </div>
-      <div class="price-block">
-        <div class="price-block__label">SL Default</div>
-        <div class="price-block__value">${formatRupiah(signal.sl_default_price)}</div>
-        <div class="price-block__pct ${pctClass(signal.sl_default_pct)}">${signal.sl_default_pct || '-'}</div>
-      </div>
-    </div>
-    <div class="card__bandar">
-      <span>${bandarText}</span>
-      <button class="card__toggle" data-target="${detailId}">Detail</button>
-    </div>
-    <dl class="card__detail" id="${detailId}" hidden>
-      ${detail.marketWarning ? `<div><dt>⚠️ Warning</dt> ${detail.marketWarning}</div>` : ''}
-      ${signal.tp2_price ? `<div><dt>TP2 (Fibo 61.8%)</dt> ${formatRupiah(signal.tp2_price)}</div>` : ''}
-      ${technicalRows}
-      ${detail.pattern ? `<div><dt>Chart</dt> ${detail.pattern.chart || '-'}</div><div><dt>Candle</dt> ${detail.pattern.candle || '-'}</div>` : ''}
-      ${detail.foreignFlow ? `<div><dt>Foreign Flow</dt> ${detail.foreignFlow.status} · Net ${detail.foreignFlow.netAsing || '-'} · Partisipasi ${detail.foreignFlow.partisipasiPct ?? '-'}%</div>` : ''}
-      ${detail.confidenceReasons?.length ? `<div><dt>Alasan Skor</dt> ${detail.confidenceReasons.map((r) => r.reason).join(', ')}</div>` : ''}
-      ${detail.analystOpinion ? `<div><dt>Analisis</dt> ${detail.analystOpinion}</div>` : ''}
-      ${detail.news?.length ? `<div><dt>Berita</dt> ${detail.news.join(' · ')}</div>` : ''}
-    </dl>
-  `;
-  card.querySelector('.card__toggle').addEventListener('click', (e) => {
-    const target = document.getElementById(e.target.dataset.target);
-    target.hidden = !target.hidden;
-    e.target.textContent = target.hidden ? 'Detail' : 'Tutup';
-  });
-  return card;
+async function saveStateToSupabase(){
+  if (!sb){ updateSyncBadge('offline','Supabase tidak tersedia'); return; }
+  try{
+    const { data: { session } } = await sb.auth.getSession();
+    if (!session){ updateSyncBadge('offline','Belum login'); return; }
+    updateSyncBadge('syncing');
+    const payload = { signals:STATE.signals, results:STATE.results, regimes:STATE.regimes,
+                       others:STATE.others, trades:STATE.trades, filename:STATE.filename, lastXlsxRows:STATE.lastXlsxRows };
+    const { error } = await sb.from('trades_data').upsert({
+      user_id: session.user.id, payload, updated_at: new Date().toISOString()
+    });
+    if (error){ console.warn('Gagal sync ke cloud:', error.message); updateSyncBadge('error'); return; }
+    updateSyncBadge('ok');
+  } catch(err){ console.warn('Gagal sync ke cloud:', err); updateSyncBadge('error'); }
 }
 
-function renderSignals() {
-  const filtered = currentSignals.filter((s) => {
-    if (currentFilter === 'halal') return s.is_halal;
-    if (currentFilter === 'non-halal') return !s.is_halal;
-    return true;
-  });
-
-  // Jaga-jaga: kalau data sumber berubah (filter ganti, refresh, dst) dan visibleCount
-  // lama sudah lebih besar dari total yang sekarang tersedia, clamp biar nggak "nyangkut".
-  if (visibleCount > filtered.length) visibleCount = Math.max(PAGE_SIZE, filtered.length);
-
-  const visible = filtered.slice(0, visibleCount);
-
-  els.signalsGrid.innerHTML = '';
-  visible.forEach((s) => els.signalsGrid.appendChild(renderCard(s)));
-
-  // Pesan jujur: kalau total sinyal yang ke-load dari Supabase sudah mentok di
-  // QUERY_LIMIT, kasih tau eksplisit ini bukan "semua sinyal", tapi N terbaru saja.
-  let countText = `${filtered.length} sinyal`;
-  if (currentSignals.length >= QUERY_LIMIT) {
-    countText += ` (${QUERY_LIMIT} sinyal terbaru dimuat, histori lebih lama tidak ditampilkan)`;
-  }
-  if (issiListEmpty && currentSignals.length > 0) {
-    countText += ' — ⚠️ daftar ISSI belum diisi, semua status default NON-HALAL';
-  }
-  els.signalCount.textContent = countText;
-  els.emptyState.hidden = filtered.length > 0;
-
-  // Paginasi: kartu dibatasi per-batch (PAGE_SIZE), sisanya baru dirender
-  // begitu tombol "Lebih banyak" dipencet, biar DOM nggak berat kalau sinyal ratusan.
-  const hasMore = filtered.length > visible.length;
-  els.paginationControls.hidden = !hasMore;
-  els.paginationInfo.textContent = hasMore
-    ? `Menampilkan ${visible.length} dari ${filtered.length}`
-    : '';
-}
-
-// Sync dari Web Signal (trades_data) dulu, baru load & render. Ini yang bikin
-// data selalu ikut yang terbaru tanpa perlu tombol "Import" manual, dan aman
-// dipanggil berkali-kali (upsert idempotent by msg_id).
-//
-// PENTING (cache): sebelum full-sync, cek dulu trades_data.updated_at di cloud
-// (query kecil, cuma 1 kolom) - kalau sama/lebih lama dari yang tercatat waktu
-// cache lokal terakhir disimpan, berarti nggak ada perubahan sejak terakhir kali
-// app ini sync, jadi SKIP upsert ke signals/confirmations/market_regime dan SKIP
-// listSignals() (query besar), langsung pakai cache lokal. forceFull=true
-// (dipakai tombol Refresh & simpan ISSI) melewati pengecekan ini.
-async function syncAndLoad({ forceFull = false } = {}) {
-  const session = await getSession();
-  if (!session) return;
-  const userId = session.user.id;
-
-  // Render cache lokal dulu (instan) kalau ada, biar grid nggak kosong nunggu network.
-  const cached = await loadSignalsFromDB();
-  if (cached && cached.signals && cached.signals.length) {
-    currentSignals = cached.signals;
-    renderSignals();
-  }
-
-  els.syncStatus.textContent = 'Mengecek data terbaru...';
-  try {
-    const { data: meta, error: metaErr } = await sb
-      .from('trades_data')
-      .select('updated_at')
-      .eq('user_id', userId)
-      .maybeSingle();
-    if (metaErr) throw metaErr;
-
-    const cloudUpdatedAt = meta ? meta.updated_at : null;
-    const isFresh = !forceFull && cached && cached.sourceUpdatedAt && cloudUpdatedAt
-      && new Date(cloudUpdatedAt).getTime() <= new Date(cached.sourceUpdatedAt).getTime();
-
-    if (isFresh) {
-      const c = cached.counts || {};
-      const n = c.signals != null ? c.signals : cached.signals.length;
-      const confirmText = c.confirmations != null ? `, ${c.confirmations} konfirmasi` : '';
-      const regimeText = c.regimes != null ? `, ${c.regimes} regime` : '';
-      els.syncStatus.textContent = `Tersinkron: ${n} sinyal${confirmText}${regimeText} (cache lokal, sumber per ${formatTimestamp(cloudUpdatedAt)}).`;
+/* Dulu tiap buka halaman selalu narik ulang seluruh payload cloud (bisa beberapa MB),
+   bikin loading kerasa lambat walau data lokal sebenarnya sudah sama persis.
+   Sekarang 2 tahap: (1) cek cuma timestamp `updated_at` cloud (query kecil/cepat),
+   (2) baru ambil payload penuh KALAU cloud beneran lebih baru dari cache lokal. */
+async function checkAndSyncFromCloud(localSavedAt){
+  if (!sb) return;
+  try{
+    const { data: { session } } = await sb.auth.getSession();
+    if (!session) return;
+    const { data: meta, error: metaErr } = await sb.from('trades_data').select('updated_at').eq('user_id', session.user.id).maybeSingle();
+    if (metaErr){ console.warn('Gagal cek update cloud:', metaErr.message); updateSyncBadge('error'); return; }
+    if (!meta){ updateSyncBadge('offline', localSavedAt ? undefined : 'Belum ada data cloud'); return; }
+    const cloudTime = new Date(meta.updated_at).getTime();
+    if (localSavedAt && cloudTime <= localSavedAt){
+      // Cache lokal sudah paling baru — gak perlu narik payload besar dari network.
+      updateSyncBadge('ok', { loadedAt: meta.updated_at });
       return;
     }
-
-    els.syncStatus.textContent = 'Menyinkronkan dari Web Signal...';
-    const summary = await syncFromWebSignal();
-    if (summary.skipped) {
-      els.syncStatus.textContent = 'Belum ada data di Web Signal untuk akun ini.';
-    } else {
-      els.syncStatus.textContent = `Tersinkron: ${summary.signals} sinyal, ${summary.confirmations} konfirmasi, ${summary.regimes} regime.`;
-    }
-    currentSignals = await listSignals(QUERY_LIMIT);
-    renderSignals();
-    await saveSignalsToDB(currentSignals, cloudUpdatedAt, {
-      signals: summary.signals,
-      confirmations: summary.confirmations,
-      regimes: summary.regimes,
-    });
-  } catch (err) {
-    els.syncStatus.textContent = `Gagal sync: ${err.message}`;
-  }
+    // Cloud lebih baru (atau kita belum punya cache lokal) — baru di sini ambil payload penuh.
+    updateSyncBadge('loading');
+    const { data, error } = await sb.from('trades_data').select('payload, updated_at').eq('user_id', session.user.id).maybeSingle();
+    if (error){ console.warn('Gagal ambil data cloud:', error.message); updateSyncBadge('error'); return; }
+    if (!data || !data.payload || !data.payload.trades || !data.payload.trades.length){ updateSyncBadge('offline','Belum ada data cloud'); return; }
+    const p = data.payload;
+    STATE.signals=p.signals; STATE.results=p.results; STATE.regimes=p.regimes;
+    STATE.others=p.others; STATE.trades=p.trades; STATE.filename=p.filename; STATE.lastXlsxRows=p.lastXlsxRows||[];
+    STATE.filtered = STATE.trades.slice();
+    renderAll();
+    saveStateToDB(); // samakan cache lokal biar next-load gak perlu narik lagi
+    updateSyncBadge('ok', { loadedAt: data.updated_at });
+  } catch(err){ console.warn('Gagal sync dari cloud:', err); updateSyncBadge('error'); }
 }
 
-els.btnRefresh.addEventListener('click', () => syncAndLoad({ forceFull: true }));
-els.filterHalal.addEventListener('click', (e) => {
-  if (!e.target.dataset.filter) return;
-  currentFilter = e.target.dataset.filter;
-  visibleCount = PAGE_SIZE; // balik ke halaman pertama tiap ganti filter
-  [...els.filterHalal.children].forEach((c) => c.classList.remove('filter-chip--active'));
-  e.target.classList.add('filter-chip--active');
-  renderSignals();
-});
-els.btnLoadMore.addEventListener('click', () => {
-  visibleCount += PAGE_SIZE;
-  renderSignals();
+async function onAuthReady(){
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session){
+    document.getElementById('authScreen').style.display='block';
+    document.getElementById('logoutBtn').style.display='none';
+    document.getElementById('userEmailTag').style.display='none';
+    updateSyncBadge('offline','Belum login');
+    return;
+  }
+  document.getElementById('authScreen').style.display='none';
+  document.getElementById('logoutBtn').style.display='inline-block';
+  document.getElementById('userEmailTag').style.display='inline-block';
+  document.getElementById('userEmailTag').textContent = session.user.email;
+  document.getElementById('fileControls').style.display='flex';
+
+  // Tampilin cache lokal DULU (instan, gak nunggu network) biar dashboard gak kelihatan
+  // blank/macet — baru setelah itu cek cloud di background dan update kalau ada yang lebih baru.
+  const gotLocal = await restoreIfSaved();
+  if (!gotLocal){ document.getElementById('emptyState').style.display='block'; }
+  await checkAndSyncFromCloud(STATE.__localSavedAt || null);
+}
+
+async function initApp(){
+  if (!sb){
+    // Supabase gagal dimuat (misal offline) — tetap izinkan pakai versi lokal (IndexedDB) saja.
+    document.getElementById('authScreen').style.display='none';
+    document.getElementById('fileControls').style.display='flex';
+    updateSyncBadge('offline','Supabase tidak tersedia (cek koneksi)');
+    const gotLocal = await restoreIfSaved();
+    if (!gotLocal){ document.getElementById('emptyState').style.display='block'; }
+    return;
+  }
+  sb.auth.onAuthStateChange((_event, _session)=>{ /* no-op, we drive flow manually via onAuthReady */ });
+  await onAuthReady();
+}
+
+const fileInput = document.getElementById('fileInput');
+const emptyState = document.getElementById('emptyState');
+
+fileInput.addEventListener('change', e=>{ if (e.target.files[0]) handleFile(e.target.files[0]); });
+emptyState.addEventListener('dragover', e=>{ e.preventDefault(); emptyState.classList.add('drag'); });
+emptyState.addEventListener('dragleave', ()=> emptyState.classList.remove('drag'));
+emptyState.addEventListener('drop', e=>{
+  e.preventDefault(); emptyState.classList.remove('drag');
+  if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
 });
 
+/* Gabungin array lama+baru berdasarkan msg_id (ID pesan Telegram, unik & gak berubah).
+   Kalau msg_id sama muncul lagi (pesan diedit / export tumpang tindih), versi BARU menang —
+   supaya kalau bot mengedit pesan (misal update status), datanya ikut ter-update. */
+function dedupeByMsgId(existingArr, newArr){
+  const map = new Map();
+  existingArr.forEach(item=>map.set(item.msg_id, item));
+  newArr.forEach(item=>map.set(item.msg_id, item));
+  return Array.from(map.values());
+}
 
-  </script>
+/* Lapisan pengaman: kalau lastXlsxRows gak tersedia (misal data cloud dari sebelum fitur ini
+   ada), status hasil merge XLSX yang SUDAH ada di STATE.trades saat ini tetap dipertahankan
+   dengan cara "dibawa" ke trades yang baru dibangun ulang dari JSON — dicocokkan by symbol+tanggal. */
+function preserveXlsxMergeAcrossJsonUpdate(oldTrades, newTrades){
+  const keyOf = t => (t.symbol||'').toUpperCase()+'|'+String(t.date).slice(0,10);
+  const oldByKey = new Map();
+  oldTrades.forEach(t=>{
+    if (t.source==='JSON+XLSX' || t.source==='XLSX') oldByKey.set(keyOf(t), t);
+  });
+  const usedKeys = new Set();
+  const merged = newTrades.map(t=>{
+    const k = keyOf(t);
+    const old = oldByKey.get(k);
+    if (!old) return t;
+    usedKeys.add(k);
+    return Object.assign({}, t, { source:'JSON+XLSX', status: old.status, return_pct: old.return_pct });
+  });
+  const leftoverOld = Array.from(oldByKey.entries())
+    .filter(([k,t])=> t.source==='XLSX' && !usedKeys.has(k))
+    .map(([,t])=>t);
+  return merged.concat(leftoverOld);
+}
+
+function handleFile(file){
+  STATE.filename = file.name;
+  const reader = new FileReader();
+  reader.onload = ev=>{
+    try{
+      const data = JSON.parse(ev.target.result);
+      const { signals, results, regimes, others } = parseTelegramExport(data);
+      const prevSignalCount = STATE.signals.length, prevResultCount = STATE.results.length, prevRegimeCount = STATE.regimes.length;
+      const prevTrades = STATE.trades;
+      // Merge (bukan replace) — export JSON baru ditambahkan ke data lama, dedup by msg_id,
+      // jadi aman upload berkali-kali (baik export baru maupun re-upload yang sama).
+      STATE.signals = dedupeByMsgId(STATE.signals, signals);
+      STATE.results = dedupeByMsgId(STATE.results, results);
+      STATE.regimes = dedupeByMsgId(STATE.regimes, regimes);
+      STATE.others  = dedupeByMsgId(STATE.others, others);
+      STATE.trades = matchTrades(STATE.signals, STATE.results);
+      STATE.trades = preserveXlsxMergeAcrossJsonUpdate(prevTrades, STATE.trades);
+      if (STATE.lastXlsxRows && STATE.lastXlsxRows.length){
+        STATE.trades = mergeWithXlsxData(STATE.trades, STATE.lastXlsxRows);
+      }
+      STATE.filtered = STATE.trades.slice();
+      renderAll();
+      saveStateToDB();
+      saveStateToSupabase();
+      const newSignals = STATE.signals.length - prevSignalCount;
+      const newResults = STATE.results.length - prevResultCount;
+      const newRegimes = STATE.regimes.length - prevRegimeCount;
+      if (prevSignalCount > 0){
+        // bukan upload pertama kali — kasih tahu berapa yang beneran baru ditambahkan
+        let msg = '✓ Digabung: +'+Math.max(newSignals,0)+' sinyal baru, +'+Math.max(newResults,0)+' hasil baru (total sinyal sekarang '+STATE.signals.length+').';
+        if (newRegimes > 0) msg += ' +'+newRegimes+' update Market Regime baru.';
+        document.getElementById('dataNote').insertAdjacentHTML('afterbegin',
+          '<div style="margin-bottom:8px;color:var(--green)">'+msg+'</div>');
+      }
+    } catch(err){
+      alert('Gagal parsing file. Pastikan ini adalah result.json hasil export Telegram (Messages, format JSON).\n\n'+err.message);
+    }
+  };
+  reader.readAsText(file);
+}
+
+/* ============================= MERGE DENGAN DASHBOARD XLSX =============================
+   Telegram cuma posting update profit (TP HIT/LOCKED/RUNNING) secara publik, jadi status
+   SL HIT dan EXPIRED tidak pernah kelihatan di JSON. File xlsx (scrape dashboard web) punya
+   status final yang sebenarnya. Digabung pakai kunci: symbol + tanggal sinyal (tie-break
+   entry price kalau ada >1 sinyal simbol yang sama di tanggal yang sama). */
+function normalizeXlsxDate(v){
+  if (v==null) return null;
+  if (v instanceof Date && !isNaN(v)) return v.toISOString().slice(0,10);
+  if (typeof v === 'number'){ const d = new Date(Math.round((v-25569)*86400*1000)); return isNaN(d) ? null : d.toISOString().slice(0,10); }
+  const s = String(v).trim();
+  const d = new Date(s);
+  if (!isNaN(d)) return d.toISOString().slice(0,10);
+  const m = s.match(/(\d{4})-(\d{2})-(\d{2})/);
+  return m ? m[0] : null;
+}
+
+function parseXlsxDashboard(workbook){
+  const sheet = workbook.Sheets[workbook.SheetNames[0]];
+  const rows = XLSX.utils.sheet_to_json(sheet, {header:1, raw:true, defval:null});
+  // Dashboard website ini punya lebih dari 1 tabel (riwayat/closed-trades vs watchlist/sinyal
+  // aktif), kolomnya beda — riwayat punya kolom status ("badge": TP HIT/SL HIT/EXPIRED),
+  // watchlist enggak (cuma proyeksi target, bukan hasil realisasi). Deteksi dari header,
+  // jangan asumsikan posisi kolom tetap.
+  const header = (rows[0]||[]).map(h=>String(h||'').toLowerCase());
+  const hasStatusCol = header.includes('badge');
+  const out = [];
+  for (let i=1;i<rows.length;i++){
+    const r = rows[i];
+    if (!r || r[1]==null || String(r[1]).trim()==='') continue;
+    const date = normalizeXlsxDate(r[0]);
+    if (!date) continue;
+    const positiveIdx = hasStatusCol ? 7 : 6;
+    const negativeIdx = hasStatusCol ? 8 : null;
+    out.push({
+      _uid: i,
+      date,
+      symbol: String(r[1]).trim().toUpperCase(),
+      decision: r[2] || null,
+      entry: parseNum(r[3]),
+      sl: parseNum(r[4]),
+      tp: parseNum(r[5]),
+      status: hasStatusCol && r[6] ? String(r[6]).trim() : null,
+      return_pct: (r[positiveIdx]!=null ? String(r[positiveIdx]).trim() : null) || (negativeIdx!=null && r[negativeIdx]!=null ? String(r[negativeIdx]).trim() : null)
+    });
+  }
+  out.__hasStatusCol = hasStatusCol;
+  return out;
+}
+
+function mergeWithXlsxData(trades, xlsxRows){
+  const xlsxByKey = {};
+  xlsxRows.forEach(r=>{
+    const k = r.symbol+'|'+r.date;
+    (xlsxByKey[k]=xlsxByKey[k]||[]).push(r);
+  });
+  // Durasi tahap 3 (fallback terakhir): dipakai HANYA kalau pesan konfirmasi gak ditemukan
+  // di JSON sama sekali (umumnya SL HIT/EXPIRED, karena Telegram gak pernah publish itu).
+  // "Waktu dari XLSX" = tanggal ter-akhir/terbaru yang ada di snapshot XLSX ini (mewakili
+  // kapan file ini di-scrape/diambil), jam-nya distandarkan 17:30 (jam tutup market).
+  let maxXlsxDate = null;
+  xlsxRows.forEach(r=>{ const d = new Date(r.date+'T00:00:00'); if (!maxXlsxDate || d>maxXlsxDate) maxXlsxDate=d; });
+  const xlsxConfirmTs = maxXlsxDate ? (()=>{ const d=new Date(maxXlsxDate); d.setHours(17,30,0,0); return d; })() : null;
+
+  const usedUid = new Set();
+  // Kunci symbol+tanggal yang SUDAH ada sebagai trade 'XLSX saja' dari upload sebelumnya —
+  // dipakai supaya upload xlsx yang sama gak nambahin baris duplikat.
+  const existingXlsxOnlyKeys = new Set(
+    trades.filter(t=>t.source==='XLSX').map(t=>(t.symbol||'').toUpperCase()+'|'+String(t.date).slice(0,10))
+  );
+  const merged = trades.map(t=>{
+    // Trade yang sumbernya sudah murni 'XLSX' (gak punya sinyal JSON asli) TIDAK dijadikan
+    // kandidat match lagi — kalau ikut di-match ulang, dia bakal salah kelabel jadi
+    // 'JSON+XLSX' padahal tetap gak punya data teknikal (MACD/RSI/dst).
+    if (t.source === 'XLSX') return t;
+    const k = (t.symbol||'').toUpperCase()+'|'+String(t.date).slice(0,10);
+    const candidates = (xlsxByKey[k]||[]).filter(r=>!usedUid.has(r._uid));
+    let match=null;
+    if (candidates.length===1) match=candidates[0];
+    else if (candidates.length>1){
+      match = candidates.slice().sort((a,b)=>
+        Math.abs((a.entry||0)-(t.entry_price||0)) - Math.abs((b.entry||0)-(t.entry_price||0))
+      )[0];
+    }
+    if (!match) return Object.assign({}, t, { source: t.source || 'JSON' });
+    usedUid.add(match._uid);
+    let duration_days = t.duration_days, duration_source = t.duration_source;
+    if (duration_days == null && xlsxConfirmTs){
+      duration_days = Math.round(((xlsxConfirmTs.getTime() - new Date(t.date).getTime()) / 86400000)*100)/100;
+      duration_source = 'xlsx';
+    }
+    return Object.assign({}, t, {
+      source: 'JSON+XLSX',
+      status: match.status || t.status,
+      return_pct: match.return_pct || t.return_pct,
+      duration_days, duration_source
+    });
+  });
+  const leftover = xlsxRows
+    .filter(r=>!usedUid.has(r._uid))
+    .filter(r=>!existingXlsxOnlyKeys.has(r.symbol+'|'+r.date))
+    .map(r=>({
+      date: r.date, symbol: r.symbol, signal_type: r.decision || null,
+      entry_price: r.entry, stop_loss: r.sl, take_profit: r.tp,
+      confidence_score: null, status: r.status, return_pct: r.return_pct,
+      source: 'XLSX', duration_days: null, duration_source: null
+    }));
+  return merged.concat(leftover).sort((a,b)=> new Date(b.date)-new Date(a.date));
+}
+
+function handleXlsxFile(file){
+  if (!STATE.trades.length){ alert('Upload result.json (export Telegram) dulu, baru upload file hasil XLSX ini.'); return; }
+  const reader = new FileReader();
+  reader.onload = ev=>{
+    try{
+      const wb = XLSX.read(ev.target.result, {type:'array', cellDates:true});
+      const xlsxRows = parseXlsxDashboard(wb);
+      if (!xlsxRows.length){ alert('Tidak ada baris valid ditemukan di file xlsx ini. Pastikan formatnya sesuai dashboard (tanggal, simbol, decision, entry, sl, tp, status, return%).'); return; }
+      if (!xlsxRows.__hasStatusCol){
+        alert('File ini kelihatannya BUKAN tabel riwayat trade (gak ada kolom status TP HIT/SL HIT/EXPIRED) — sepertinya ini export dari tabel watchlist/sinyal aktif, bukan tabel riwayat/closed trades.\n\nKalau di-upload, angka target/proyeksi di situ bisa kebaca salah jadi "status" trade. Pastikan kamu export dari halaman riwayat (yang punya kolom status), lalu upload lagi.');
+        return;
+      }
+      const prevMatched = STATE.trades.filter(t=>t.source==='JSON+XLSX').length;
+      const prevXlsxOnly = STATE.trades.filter(t=>t.source==='XLSX').length;
+      STATE.trades = mergeWithXlsxData(STATE.trades, xlsxRows);
+      STATE.lastXlsxRows = xlsxRows;
+      STATE.filtered = STATE.trades.slice();
+      renderAll();
+      saveStateToDB();
+      saveStateToSupabase();
+      const newMatched = STATE.trades.filter(t=>t.source==='JSON+XLSX').length - prevMatched;
+      const newXlsxOnly = STATE.trades.filter(t=>t.source==='XLSX').length - prevXlsxOnly;
+      document.getElementById('dataNote').insertAdjacentHTML('afterbegin',
+        '<div style="margin-bottom:8px;color:var(--green)">✓ Digabung: +'+Math.max(newMatched,0)+' trade lengkap (JSON+XLSX), +'+Math.max(newXlsxOnly,0)+' trade XLSX-saja baru.</div>');
+    } catch(err){
+      alert('Gagal membaca file xlsx.\n\n'+err.message);
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+document.getElementById('xlsxInput').addEventListener('change', e=>{ if (e.target.files[0]) handleXlsxFile(e.target.files[0]); });
+
+initApp();
+
+function fmtRp(v){ return v==null ? '—' : 'Rp'+Math.round(v).toLocaleString('id-ID'); }
+function fmtDate(d){ if(!d) return '—'; const dt=new Date(d); return dt.toLocaleDateString('id-ID',{year:'numeric',month:'2-digit',day:'2-digit'}); }
+function pctNum(s){ if (s==null) return null; const v=parseFloat(String(s).replace('%','').replace(',', '.')); return isNaN(v)?null:v; }
+
+function durationSourceLabel(src){
+  if (src==='confirm') return 'Durasi dari field durasi eksplisit di pesan konfirmasi (bot versi baru)';
+  if (src==='result') return 'Durasi riil: selisih waktu pesan sinyal ke waktu pesan konfirmasi (TP HIT/LOCKED)';
+  if (src==='xlsx') return 'Estimasi: selisih waktu sinyal ke tanggal snapshot XLSX (jam 17:30), dipakai karena gak ada pesan konfirmasi di JSON';
+  return 'Belum diketahui';
+}
+function formatDuration(t){
+  if (t.duration_days==null) return '—';
+  const totalMinutes = Math.max(0, Math.round(t.duration_days*24*60));
+  const days = Math.floor(totalMinutes/1440);
+  const hours = Math.floor((totalMinutes%1440)/60);
+  const minutes = totalMinutes%60;
+  const text = days+':'+String(hours).padStart(2,'0')+':'+String(minutes).padStart(2,'0');
+  return '<span title="'+durationSourceLabel(t.duration_source)+'">'+text+'</span>';
+}
+
+function renderAll(){
+  document.getElementById('emptyState').style.display='none';
+  document.getElementById('dashboard').style.display='block';
+  document.getElementById('fileControls').style.display='flex';
+  document.getElementById('filenameTag').textContent = STATE.signals.length+' sinyal total · terakhir: '+STATE.filename;
+
+  const srcCounts = STATE.trades.reduce((a,t)=>{ a[t.source]=(a[t.source]||0)+1; return a; }, {});
+  const hasXlsx = (srcCounts['JSON+XLSX']||0) + (srcCounts['XLSX']||0) > 0;
+  document.getElementById('dataNote').innerHTML = hasXlsx
+    ? '<b>Catatan:</b> Data digabung dari 2 sumber — Telegram export (konteks teknikal: MACD/RSI/EMA/dll) dan dashboard XLSX (status final TP HIT/SL HIT/EXPIRED). '+
+      'Rincian: <b>'+(srcCounts['JSON+XLSX']||0)+'</b> trade lengkap (JSON+XLSX), <b>'+(srcCounts['JSON']||0)+'</b> trade JSON saja (belum ada hasil final / pending), '+
+      '<b>'+(srcCounts['XLSX']||0)+'</b> trade XLSX saja (di luar cakupan tanggal export Telegram, tanpa data teknikal). '+
+      'Win rate di kartu statistik dihitung dari trade yang statusnya sudah final (TP HIT/SL HIT), exclude EXPIRED &amp; yang masih pending. '+
+      'Kolom <b>Durasi</b> (format hari:jam:menit): dari field durasi di pesan konfirmasi kalau ada, kalau tidak dari selisih waktu sinyal-konfirmasi (riil), kalau pesan konfirmasi gak ada (SL HIT/EXPIRED dari XLSX) pakai estimasi ke tanggal snapshot XLSX jam 17:30 — hover teks durasinya buat lihat sumbernya. "—" berarti belum ada datanya. '+
+      '<br><b>Data tersimpan otomatis</b> ke akun kamu (online, via Supabase) dan juga di-cache lokal di browser ini. Klik "🗑 Hapus Data" untuk membersihkan.'
+    : '<b>Catatan:</b> Channel Telegram ini hanya memposting update saat sinyal <i>profit</i> (TP HIT / Profit Terkunci / Profit Terus Naik). '+
+      'Tidak ditemukan pesan Stop-Loss-Hit atau Expired secara publik — jadi sinyal berstatus <span class="amber-txt">NO RESULT</span> berarti belum ada '+
+      'update publik, bukan berarti gagal. Klik <b>"+ Tambah/Update XLSX"</b> untuk melengkapi dengan status final (termasuk SL HIT/EXPIRED) dari dashboard.'+
+      'Kolom <b>Durasi</b> (format hari:jam:menit) baru lengkap setelah XLSX digabung — hover teksnya buat lihat sumber perhitungannya. "—" berarti belum ada datanya. '+
+      '<br><b>Data tersimpan otomatis</b> ke akun kamu (online, via Supabase) dan juga di-cache lokal di browser ini. Klik "🗑 Hapus Data" untuk membersihkan.';
+
+  renderStats();
+  renderEquityChart();
+  renderTradesTable();
+  renderRegime();
+  renderOther();
+  setupFilters();
+  setupTabs();
+}
+
+function renderStats(){
+  const trades = STATE.trades;
+  const withReturn = trades.map(t=>({...t, pct: pctNum(t.return_pct)})).filter(t=>t.pct!=null);
+  const totalReturn = withReturn.reduce((a,t)=>a+t.pct,0);
+  const avgReturn = withReturn.length ? totalReturn/withReturn.length : 0;
+  const best = withReturn.reduce((a,t)=> (!a || t.pct>a.pct) ? t : a, null);
+  const worst = withReturn.reduce((a,t)=> (!a || t.pct<a.pct) ? t : a, null);
+  const statusCounts = trades.reduce((acc,t)=>{ acc[t.status]=(acc[t.status]||0)+1; return acc; }, {});
+  const hasStatusCount = (statusCounts['TP HIT']||0)+(statusCounts['CLOSED (LOCKED)']||0)+(statusCounts['RUNNING']||0)+(statusCounts['SL HIT']||0)+(statusCounts['EXPIRED']||0);
+  const hasXlsx = trades.some(t=>t.source==='JSON+XLSX'||t.source==='XLSX');
+  const wins = (statusCounts['TP HIT']||0)+(statusCounts['CLOSED (LOCKED)']||0);
+  const losses = statusCounts['SL HIT']||0;
+  const decided = wins+losses;
+  const winRate = decided ? (wins/decided*100) : null;
+
+  const cards = [
+    { label:'Total Sinyal', value: STATE.signals.length, sub: STATE.signals.filter(s=>s.signal_type==='BUY').length+' BUY · '+STATE.signals.filter(s=>s.signal_type==='WATCHLIST').length+' WATCHLIST' },
+    { label:'Ada Update Hasil', value: hasStatusCount, sub: (statusCounts['TP HIT']||0)+' TP · '+(statusCounts['SL HIT']||0)+' SL · '+(statusCounts['CLOSED (LOCKED)']||0)+' LOCKED · '+(statusCounts['EXPIRED']||0)+' EXPIRED · '+(statusCounts['RUNNING']||0)+' RUNNING' },
+    hasXlsx
+      ? { label:'Win Rate (TP vs SL, real)', value: winRate!=null ? winRate.toFixed(1)+'%' : '—', cls: winRate!=null && winRate>=50 ? 'pos':'neg', sub: wins+' menang · '+losses+' kalah (exclude EXPIRED/pending)' }
+      : { label:'Total Return (tercatat)', value: (totalReturn>=0?'+':'')+totalReturn.toFixed(1)+'%', cls: totalReturn>=0?'pos':'neg', sub: withReturn.length+' trade dengan update' },
+    { label:'Avg Return / Trade', value: (avgReturn>=0?'+':'')+avgReturn.toFixed(1)+'%', cls: avgReturn>=0?'pos':'neg', sub:'Per trade dengan hasil' },
+    { label:'Best Trade', value: best ? best.symbol+' '+(best.pct>=0?'+':'')+best.pct.toFixed(1)+'%' : '—', cls:'pos', sub: best? fmtDate(best.date):'' },
+    { label:'Worst Trade', value: worst ? worst.symbol+' '+(worst.pct>=0?'+':'')+worst.pct.toFixed(1)+'%' : '—', cls: worst && worst.pct<0 ? 'neg':'pos', sub: worst? fmtDate(worst.date):'' },
+  ];
+  document.getElementById('statsGrid').innerHTML = cards.map(c=>
+    '<div class="stat-card"><div class="stat-label">'+c.label+'</div><div class="stat-value '+(c.cls||'')+'">'+c.value+'</div><div class="stat-sub">'+(c.sub||'')+'</div></div>'
+  ).join('');
+}
+
+function renderEquityChart(){
+  const trades = STATE.trades
+    .map(t=>({date:t.date, pct: pctNum(t.return_pct)}))
+    .filter(t=>t.pct!=null)
+    .sort((a,b)=>new Date(a.date)-new Date(b.date));
+  const el = document.getElementById('equityChart');
+  if (!trades.length){ el.innerHTML = '<div style="color:var(--text-dim);font-size:12.5px;padding:20px 0;">Belum ada data untuk ditampilkan.</div>'; return; }
+  let cum=0; const pts = trades.map(t=>{ cum+=t.pct; return cum; });
+  const W=1100, H=220, pad=30;
+  const min=Math.min(0,...pts), max=Math.max(0,...pts);
+  const range = (max-min)||1;
+  const stepX = (W-2*pad)/Math.max(1,pts.length-1);
+  const xy = pts.map((v,i)=>[pad+i*stepX, H-pad-((v-min)/range)*(H-2*pad)]);
+  const path = xy.map((p,i)=> (i===0?'M':'L')+p[0].toFixed(1)+','+p[1].toFixed(1)).join(' ');
+  const zeroY = H-pad-((0-min)/range)*(H-2*pad);
+  const last = pts[pts.length-1];
+  const color = last>=0 ? 'var(--green)' : 'var(--red)';
+  el.innerHTML = '<svg viewBox="0 0 '+W+' '+H+'" width="100%" height="220" preserveAspectRatio="none">'+
+    '<line x1="'+pad+'" y1="'+zeroY+'" x2="'+(W-pad)+'" y2="'+zeroY+'" stroke="var(--line)" stroke-dasharray="4 3"/>'+
+    '<path d="'+path+'" fill="none" stroke="'+color+'" stroke-width="2"/>'+
+    '<circle cx="'+xy[xy.length-1][0]+'" cy="'+xy[xy.length-1][1]+'" r="3.5" fill="'+color+'"/>'+
+    '</svg>'+
+    '<div style="display:flex;justify-content:space-between;color:var(--text-dim);font-size:11px;margin-top:4px;">'+
+    '<span>'+fmtDate(trades[0].date)+'</span><span class="mono" style="color:'+color+'">Kumulatif: '+(last>=0?'+':'')+last.toFixed(1)+'%</span><span>'+fmtDate(trades[trades.length-1].date)+'</span></div>';
+}
+
+function statusBadge(status){
+  const map = { 'TP HIT':'badge-tp', 'CLOSED (LOCKED)':'badge-locked', 'RUNNING':'badge-running', 'NO RESULT':'badge-none', 'SL HIT':'badge-slhit', 'EXPIRED':'badge-expired' };
+  return '<span class="badge '+(map[status]||'badge-none')+'">'+status+'</span>';
+}
+function typeBadge(t){ return '<span class="badge '+(t==='BUY'?'badge-buy':'badge-watchlist')+'">'+t+'</span>'; }
+function sourceBadge(src){
+  const map = { 'JSON+XLSX':['badge-src-both','JSON+XLSX'], 'JSON':['badge-src-json','JSON'], 'XLSX':['badge-src-xlsx','XLSX'] };
+  const [cls,label] = map[src] || ['badge-none', src||'—'];
+  return '<span class="badge '+cls+'">'+label+'</span>';
+}
+
+function applyFilters(){
+  const q = document.getElementById('searchSymbol').value.trim().toUpperCase();
+  const type = document.getElementById('filterType').value;
+  const status = document.getElementById('filterStatus').value;
+  const source = document.getElementById('filterSource').value;
+  STATE.filtered = STATE.trades.filter(t=>{
+    if (q && !(t.symbol||'').includes(q)) return false;
+    if (type && t.signal_type!==type) return false;
+    if (status && t.status!==status) return false;
+    if (source && t.source!==source) return false;
+    return true;
+  });
+  STATE.page = 1;
+  renderTradesTable();
+}
+
+function setupFilters(){
+  document.getElementById('searchSymbol').oninput = applyFilters;
+  document.getElementById('filterType').onchange = applyFilters;
+  document.getElementById('filterStatus').onchange = applyFilters;
+  document.getElementById('filterSource').onchange = applyFilters;
+  STATE.filtered = STATE.trades.slice();
+}
+
+function setupTabs(){
+  document.querySelectorAll('.tab').forEach(tab=>{
+    tab.onclick = ()=>{
+      document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+      tab.classList.add('active');
+      ['trades','regime','other'].forEach(id=> document.getElementById('tab-'+id).style.display = (id===tab.dataset.tab) ? 'block':'none');
+    };
+  });
+}
+
+function renderTradesTable(){
+  const list = STATE.filtered;
+  document.getElementById('tradeCount').textContent = list.length+' trade';
+  const pageSize = STATE.pageSize;
+  const totalPages = Math.max(1, Math.ceil(list.length/pageSize));
+  STATE.page = Math.min(STATE.page, totalPages);
+  const start = (STATE.page-1)*pageSize;
+  const pageItems = list.slice(start, start+pageSize);
+
+  document.getElementById('tradesBody').innerHTML = pageItems.map((t,i)=>{
+    const idx = STATE.trades.indexOf(t);
+    const pct = pctNum(t.return_pct);
+    const pctClass = pct==null ? '' : (pct>=0?'pos':'neg');
+    return '<tr onclick="openModal('+idx+')">'+
+      '<td class="mono">'+fmtDate(t.date)+'</td>'+
+      '<td class="symbol">'+(t.symbol||'—')+'</td>'+
+      '<td>'+typeBadge(t.signal_type||'—')+'</td>'+
+      '<td class="mono">'+fmtRp(t.entry_price)+'</td>'+
+      '<td class="mono">'+fmtRp(t.stop_loss)+'</td>'+
+      '<td class="mono">'+fmtRp(t.take_profit)+'</td>'+
+      '<td class="mono">'+(t.confidence_score!=null ? t.confidence_score+'/10' : '—')+'</td>'+
+      '<td>'+statusBadge(t.status)+'</td>'+
+      '<td class="mono">'+formatDuration(t)+'</td>'+
+      '<td class="mono '+pctClass+'" '+(pct!=null?'style="font-weight:600"':'')+'>'+(t.return_pct||'—')+'</td>'+
+      '<td>'+sourceBadge(t.source)+'</td>'+
+      '</tr>';
+  }).join('');
+
+  const pag = document.getElementById('tradesPagination');
+  let html='';
+  html += '<button '+(STATE.page===1?'disabled':'')+' onclick="gotoPage('+(STATE.page-1)+')">‹</button>';
+  for (let p=1;p<=totalPages;p++){
+    if (p===1||p===totalPages||Math.abs(p-STATE.page)<=1) html += '<button class="'+(p===STATE.page?'active':'')+'" onclick="gotoPage('+p+')">'+p+'</button>';
+    else if (Math.abs(p-STATE.page)===2) html += '<span style="color:var(--text-dim);padding:5px 2px;">…</span>';
+  }
+  html += '<button '+(STATE.page===totalPages?'disabled':'')+' onclick="gotoPage('+(STATE.page+1)+')">›</button>';
+  pag.innerHTML = html;
+}
+function gotoPage(p){ STATE.page=p; renderTradesTable(); }
+
+function fmtScore(v){ return v==null ? '—' : (v>0?'+':'')+v; }
+function renderRegime(){
+  document.getElementById('regimeBody').innerHTML = STATE.regimes.slice().sort((a,b)=>new Date(b.date)-new Date(a.date)).map((r,idx)=>{
+    const cls = r.prediction==='BULLISH'?'pos': r.prediction==='BEARISH'?'neg':'';
+    return '<tr onclick="openRegimeModal('+idx+')"><td class="mono">'+fmtDate(r.date)+'</td><td class="'+cls+'" style="font-weight:600">'+(r.prediction||'—')+'</td>'+
+      '<td class="mono">'+fmtScore(r.score)+'</td><td style="white-space:normal;max-width:520px;color:var(--text-dim);font-size:12px;">'+(r.commentary||'—')+'</td></tr>';
+  }).join('');
+}
+function openRegimeModal(idx){
+  const sorted = STATE.regimes.slice().sort((a,b)=>new Date(b.date)-new Date(a.date));
+  const r = sorted[idx];
+  const cls = r.prediction==='BULLISH'?'pos': r.prediction==='BEARISH'?'neg':'';
+  let html = '<div class="modal-head"><h3>🌍 IHSG Regime <span class="'+cls+'" style="font-size:14px;font-weight:600;">'+(r.prediction||'—')+'</span></h3><span class="x" onclick="closeModal()">×</span></div>';
+  html += '<div class="modal-sub">'+fmtDate(r.date)+' · msg #'+r.msg_id+(r.regime_date?' · '+r.regime_date:'')+'</div>';
+  html += '<div class="section-h">Ringkasan</div><div class="field-grid">';
+  html += fieldHtml('Prediksi', r.prediction);
+  html += fieldHtml('Score', r.score!=null?fmtScore(r.score):null);
+  html += '</div>';
+  if (r.components){
+    html += '<div class="section-h" style="margin-top:16px;">Komponen Index Scoring</div>';
+    html += '<div style="font-size:12.5px;line-height:1.9;color:var(--text-dim);">'+r.components.split(' | ').map(c=>'<div>'+c+'</div>').join('')+'</div>';
+  }
+  if (r.commentary){
+    html += '<div class="section-h" style="margin-top:16px;">Komentar</div><div class="opinion-box">'+r.commentary+'</div>';
+  }
+  html += '<details class="raw-toggle" style="margin-top:16px;"><summary>Lihat teks asli pesan Telegram</summary><div class="raw-text">'+r.raw_text.replace(/</g,'&lt;')+'</div></details>';
+  document.getElementById('modalContent').innerHTML = html;
+  document.getElementById('modalOverlay').classList.add('show');
+}
+function renderOther(){
+  document.getElementById('otherBody').innerHTML = STATE.others.slice().sort((a,b)=>new Date(b.date)-new Date(a.date)).map(o=>
+    '<tr><td class="mono">'+fmtDate(o.date)+'</td><td>'+o.from+'</td><td style="white-space:normal;max-width:600px;">'+o.text.replace(/</g,'&lt;')+'</td></tr>'
+  ).join('');
+}
+
+/* ============================= MODAL ============================= */
+function fieldHtml(k,v){ return v==null||v==='' ? '' : '<div class="field"><div class="k">'+k+'</div><div class="v">'+v+'</div></div>'; }
+
+function openModal(idx){
+  const t = STATE.trades[idx];
+  const pct = pctNum(t.return_pct);
+  const pctCls = pct==null?'':(pct>=0?'pos':'neg');
+  let html = '<div class="modal-head"><h3>'+t.symbol+' <span style="font-size:14px;color:var(--text-dim);font-weight:500;">'+(t.signal_type||'')+'</span></h3><span class="x" onclick="closeModal()">×</span></div>';
+  html += '<div class="modal-sub">'+fmtDate(t.date)+' · msg #'+t.msg_id+' · bot '+(t.bot_version||'')+'</div>';
+  if (t.market_warning) html += '<div class="note" style="margin-bottom:16px;">⚠️ '+t.market_warning+'</div>';
+
+  html += '<div class="section-h">Ringkasan Sinyal</div><div class="field-grid">';
+  html += fieldHtml('Entry', fmtRp(t.entry_price));
+  html += fieldHtml('Stop Loss', fmtRp(t.stop_loss) + (t.stop_loss_pct?' ('+t.stop_loss_pct+')':''));
+  html += fieldHtml('Take Profit', fmtRp(t.take_profit) + (t.take_profit_pct?' ('+t.take_profit_pct+')':''));
+  html += fieldHtml('Target 2', fmtRp(t.target2_price));
+  html += fieldHtml('SL Moderat', fmtRp(t.sl_moderat));
+  html += fieldHtml('SL Konservatif', fmtRp(t.sl_konservatif));
+  html += fieldHtml('Confidence', t.confidence_score!=null ? t.confidence_score+'/10 ('+(t.confidence_label||'')+')' : null);
+  html += fieldHtml('Status', '<span class="'+pctCls+'">'+t.status+(t.return_pct?' · '+t.return_pct:'')+'</span>');
+  html += fieldHtml('Durasi', formatDuration(t));
+  html += '</div>';
+  if (t.confidence_reasons) html += '<div class="opinion-box" style="margin-bottom:16px;">'+t.confidence_reasons+'</div>';
+
+  html += '<div class="section-h">Indikator Teknikal</div><div class="field-grid">';
+  html += fieldHtml('MACD', t.macd!=null ? t.macd+' (Sig '+t.macd_signal_val+') '+(t.macd_trend||'') : null);
+  html += fieldHtml('RSI (14)', t.rsi!=null ? t.rsi+' '+(t.rsi_label||'') : null);
+  html += fieldHtml('EMA 20 / 50', t.ema20!=null ? fmtRp(t.ema20)+' / '+fmtRp(t.ema50)+' '+(t.ema_trend||'') : null);
+  html += fieldHtml('VWAP', t.vwap!=null ? fmtRp(t.vwap)+' '+(t.vwap_position||'') : null);
+  html += fieldHtml('Bollinger Bands', t.bb_lower!=null ? '['+fmtRp(t.bb_lower)+' - '+fmtRp(t.bb_upper)+']' : null);
+  html += fieldHtml('ADX', t.adx!=null ? t.adx+' '+(t.adx_label||'') : null);
+  html += fieldHtml('ATR', fmtRp(t.atr));
+  html += '</div>';
+
+  html += '<div class="section-h">Pattern</div><div class="field-grid two">';
+  html += fieldHtml('Chart', t.chart_pattern);
+  html += fieldHtml('Candle', t.candle_pattern);
+  html += '</div>';
+
+  if (t.bandar_signal || t.smart_money_net){
+    html += '<div class="section-h">Bandarmology</div><div class="field-grid two">';
+    html += fieldHtml('Sinyal Bandar', t.bandar_signal);
+    html += fieldHtml('Smart Money Net', t.smart_money_net);
+    html += '</div>';
+    if (t.top_buyer_1 || t.top_seller_1){
+      html += '<div class="field-grid two">';
+      html += '<div class="field"><div class="k">Top Buyer</div><div class="v" style="font-size:11.5px;line-height:1.7;">'+[t.top_buyer_1,t.top_buyer_2,t.top_buyer_3].filter(Boolean).join('<br>')+'</div></div>';
+      html += '<div class="field"><div class="k">Top Seller</div><div class="v" style="font-size:11.5px;line-height:1.7;">'+[t.top_seller_1,t.top_seller_2,t.top_seller_3].filter(Boolean).join('<br>')+'</div></div>';
+      html += '</div>';
+    }
+  }
+
+  if (t.foreign_status || t.beta!=null){
+    html += '<div class="section-h">Foreign Flow &amp; Risk</div><div class="field-grid">';
+    html += fieldHtml('Foreign Status', t.foreign_status);
+    html += fieldHtml('Net Asing', t.net_asing ? t.net_asing+' ('+ (t.net_asing_lot!=null?t.net_asing_lot.toLocaleString('id-ID'):'')+' lot)' : null);
+    html += fieldHtml('Buy / Sell Asing', t.foreign_buy_lot!=null ? t.foreign_buy_lot.toLocaleString('id-ID')+' / '+t.foreign_sell_lot.toLocaleString('id-ID')+' lot' : null);
+    html += fieldHtml('Partisipasi Asing', t.partisipasi_asing_pct!=null ? t.partisipasi_asing_pct+'%' : null);
+    html += fieldHtml('Beta', t.beta!=null ? t.beta+' ('+(t.beta_label||'')+')' : null);
+    html += fieldHtml('Volatilitas', t.volatilitas_pct!=null ? t.volatilitas_pct+'%' : null);
+    html += '</div>';
+  }
+
+  if (t.analyst_opinion){
+    html += '<div class="section-h">Analyst Opinion</div><div class="opinion-box">'+t.analyst_opinion+'</div>';
+  }
+  const news = [t.news_1,t.news_2,t.news_3,t.news_4,t.news_5].filter(Boolean);
+  if (news.length){
+    html += '<div class="section-h" style="margin-top:16px;">Berita Terkait</div>'+news.map(n=>'<div class="news-item">'+n+'</div>').join('');
+  }
+
+  html += '<details class="raw-toggle"><summary>Lihat teks asli pesan Telegram</summary><div class="raw-text">'+t.raw_text.replace(/</g,'&lt;')+'</div></details>';
+
+  document.getElementById('modalContent').innerHTML = html;
+  document.getElementById('modalOverlay').classList.add('show');
+}
+function closeModal(){ document.getElementById('modalOverlay').classList.remove('show'); }
+document.addEventListener('keydown', e=>{ if (e.key==='Escape') closeModal(); });
+
+/* ============================= EXPORT ============================= */
+function csvEscape(v){ if (v==null) return ''; const s=String(v).replace(/"/g,'""'); return /[",\n]/.test(s) ? '"'+s+'"' : s; }
+function toCSV(rows, cols){
+  const header = cols.join(',');
+  const body = rows.map(r=> cols.map(c=>csvEscape(r[c])).join(',')).join('\n');
+  return header+'\n'+body;
+}
+function download(filename, content, mime){
+  const blob = new Blob([content], {type:mime});
+  const a = document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+}
+function downloadTradesCSV(){
+  const cols = ['date','symbol','signal_type','entry_price','stop_loss','take_profit','target2_price','confidence_score','confidence_label','status','duration_days','duration_source','return_pct','bandar_signal','foreign_status','bot_version'];
+  download('idx_trade_journal.csv', toCSV(STATE.trades, cols), 'text/csv;charset=utf-8;');
+}
+function downloadExcel(){
+  const wb = XLSX.utils.book_new();
+  const tradeCols = ['msg_id','date','symbol','signal_type','market_warning','confidence_score','confidence_label','confidence_reasons',
+    'entry_price','take_profit','take_profit_pct','target2_price','stop_loss','stop_loss_pct','sl_moderat','sl_konservatif',
+    'macd','macd_signal_val','macd_trend','rsi','rsi_label','ema20','ema50','ema_trend','vwap','vwap_position',
+    'bb_lower','bb_upper','adx','adx_label','atr','chart_pattern','candle_pattern','bandar_signal','smart_money_net',
+    'top_buyer_1','top_buyer_2','top_buyer_3','top_seller_1','top_seller_2','top_seller_3','beta','beta_label','volatilitas_pct',
+    'foreign_status','net_asing','net_asing_lot','foreign_buy_lot','foreign_sell_lot','partisipasi_asing_pct',
+    'analyst_opinion','news_1','news_2','news_3','bot_version','status','duration_days','duration_source','return_pct'];
+  const tradeSheet = XLSX.utils.json_to_sheet(STATE.trades.map(t=>{
+    const o={}; tradeCols.forEach(c=>o[c]=t[c]!==undefined?t[c]:''); return o;
+  }), {header:tradeCols});
+  XLSX.utils.book_append_sheet(wb, tradeSheet, 'Trade Journal');
+
+  const resultCols = ['msg_id','date','type','symbol','status_text','entry','exit_price','day_high','peak_price','peak_pct','profit_pct'];
+  const resultSheet = XLSX.utils.json_to_sheet(STATE.results.map(r=>{ const o={}; resultCols.forEach(c=>o[c]=r[c]!==undefined?r[c]:''); return o; }), {header:resultCols});
+  XLSX.utils.book_append_sheet(wb, resultSheet, 'Result Updates');
+
+  const regimeCols = ['msg_id','date','regime_date','prediction','score','components','commentary'];
+  const regimeSheet = XLSX.utils.json_to_sheet(STATE.regimes.map(r=>{ const o={}; regimeCols.forEach(c=>o[c]=r[c]!==undefined?r[c]:''); return o; }), {header:regimeCols});
+  XLSX.utils.book_append_sheet(wb, regimeSheet, 'Market Regime');
+
+  XLSX.writeFile(wb, 'idx_signal_journal.xlsx');
+}
+</script>
 </body>
 </html>
