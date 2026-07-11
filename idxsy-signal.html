@@ -305,10 +305,7 @@
       </div>
       <div class="table-wrap">
         <table>
-          <thead><tr>
-            <th>Tanggal</th><th>Simbol</th><th>Signal</th><th>Entry</th><th>SL</th><th>TP</th>
-            <th>Confidence</th><th>Status</th><th>Durasi</th><th>Return</th><th>Sumber</th>
-          </tr></thead>
+          <thead><tr id="tradesHeadRow"></tr></thead>
           <tbody id="tradesBody"></tbody>
         </table>
       </div>
@@ -498,6 +495,7 @@ function parseTelegramExport(data){
 /* match each signal to its outcome by symbol + date window */
 function matchTrades(signals, results){
   const RUNNING_FRESH_DAYS = 3; // sinyal terakhir tanpa laporan apa pun dianggap RUNNING hanya jika masih dalam N hari terakhir dari data
+  const ENTRY_MATCH_TOLERANCE_PCT = 0.05; // toleransi selisih harga entry (%) — dibuat sangat ketat (hampir exact match), cuma jaga-jaga pembulatan desimal saat parsing, BUKAN buat "memaafkan" selisih riil. Sinyal & konfirmasi yang benar-benar berpasangan seharusnya punya harga entry SAMA PERSIS.
   let maxKnownDate = 0;
   signals.forEach(s=>{ const t=new Date(s.date).getTime(); if (t>maxKnownDate) maxKnownDate=t; });
   results.forEach(r=>{ const t=new Date(r.date).getTime(); if (t>maxKnownDate) maxKnownDate=t; });
@@ -514,7 +512,16 @@ function matchTrades(signals, results){
       const nextSigDate = idx+1 < sigs.length ? new Date(sigs[idx+1].date) : null;
       const candidates = resArr.filter(r=>{
         const rd = new Date(r.date);
-        return rd >= sigDate && (!nextSigDate || rd < nextSigDate);
+        const inWindow = rd >= sigDate && (!nextSigDate || rd < nextSigDate);
+        if (!inWindow) return false;
+        // Wajib simbol (udah pasti sama, dari grouping bySymbol) DAN harga entry mendekati —
+        // supaya konfirmasi simbol yang sama tapi beda sinyal (misal 2 sinyal di hari yang
+        // sama, harga beda jauh) gak ketuker asal jatuh di rentang waktu yang tepat.
+        if (r.entry != null && s.entry_price != null && s.entry_price !== 0){
+          const diffPct = Math.abs(r.entry - s.entry_price) / s.entry_price * 100;
+          if (diffPct > ENTRY_MATCH_TOLERANCE_PCT) return false;
+        }
+        return true;
       });
       let status='NO RESULT', return_pct=null, result_ref=null;
       const terminal = candidates.find(r=>r.type==='TP_HIT'||r.type==='PROFIT_LOCKED');
@@ -537,10 +544,10 @@ function matchTrades(signals, results){
       let duration_days=null, duration_source=null;
       if (terminal){
         if (terminal.duration_days_confirm != null){
-          duration_days = Math.round(terminal.duration_days_confirm*100)/100;
+          duration_days = Math.round(terminal.duration_days_confirm*1e6)/1e6;
           duration_source = 'confirm';
         } else {
-          duration_days = Math.round(((new Date(terminal.date).getTime() - sigDate.getTime()) / 86400000)*100)/100;
+          duration_days = Math.round(((new Date(terminal.date).getTime() - sigDate.getTime()) / 86400000)*1e6)/1e6;
           duration_source = 'result';
         }
       }
@@ -552,7 +559,7 @@ function matchTrades(signals, results){
 }
 
 /* ============================= APP STATE ============================= */
-let STATE = { signals:[], results:[], regimes:[], others:[], trades:[], filtered:[], page:1, pageSize:25, filename:'', lastXlsxRows:[] };
+let STATE = { signals:[], results:[], regimes:[], others:[], trades:[], filtered:[], page:1, pageSize:25, filename:'', lastXlsxRows:[], sort:{key:'date',dir:-1} };
 
 /* ============================= PERSISTENCE (IndexedDB) =============================
    Data disimpan lokal di browser (bukan di server manapun) supaya tidak perlu upload
@@ -618,7 +625,7 @@ async function clearSavedData(){
       if (session){ await sb.from('trades_data').delete().eq('user_id', session.user.id); }
     }
   } catch(err){ console.warn('Gagal menghapus data cloud:', err); }
-  STATE = { signals:[], results:[], regimes:[], others:[], trades:[], filtered:[], page:1, pageSize:25, filename:'' };
+  STATE = { signals:[], results:[], regimes:[], others:[], trades:[], filtered:[], page:1, pageSize:25, filename:'', sort:{key:'date',dir:-1} };
   document.getElementById('dashboard').style.display='none';
   document.getElementById('emptyState').style.display='block';
   updateSyncBadge('offline','Belum ada data');
@@ -700,7 +707,7 @@ async function doAuthSubmit(){
 
 async function doLogout(){
   if (sb) await sb.auth.signOut();
-  STATE = { signals:[], results:[], regimes:[], others:[], trades:[], filtered:[], page:1, pageSize:25, filename:'' };
+  STATE = { signals:[], results:[], regimes:[], others:[], trades:[], filtered:[], page:1, pageSize:25, filename:'', sort:{key:'date',dir:-1} };
   document.getElementById('dashboard').style.display='none';
   document.getElementById('fileControls').style.display='none';
   document.getElementById('emptyState').style.display='none';
@@ -995,14 +1002,23 @@ function mergeWithXlsxData(trades, xlsxRows){
     }
     if (!match) return Object.assign({}, t, { source: t.source || 'JSON' });
     usedUid.add(match._uid);
-    let duration_days = t.duration_days, duration_source = t.duration_source;
+    const finalStatus = match.status || t.status;
+    // Kalau durasi tadinya dihitung dari konfirmasi JSON (TP_HIT/PROFIT_LOCKED, artinya JSON
+    // "yakin" hasilnya TP HIT/CLOSED), tapi status FINAL dari XLSX ternyata beda (SL HIT/EXPIRED)
+    // — berarti konfirmasi JSON yang ke-pairing itu SALAH (biasanya kepunyaan sinyal simbol
+    // yang sama tapi instance lain) atau datanya sendiri kontradiktif. Durasi itu gak valid,
+    // buang & hitung ulang pakai estimasi snapshot XLSX.
+    const jsonDurationInvalid = (t.duration_source==='confirm' || t.duration_source==='result')
+      && finalStatus !== 'TP HIT' && finalStatus !== 'CLOSED (LOCKED)';
+    let duration_days = jsonDurationInvalid ? null : t.duration_days;
+    let duration_source = jsonDurationInvalid ? null : t.duration_source;
     if (duration_days == null && xlsxConfirmTs){
-      duration_days = Math.round(((xlsxConfirmTs.getTime() - new Date(t.date).getTime()) / 86400000)*100)/100;
+      duration_days = Math.round(((xlsxConfirmTs.getTime() - new Date(t.date).getTime()) / 86400000)*1e6)/1e6;
       duration_source = 'xlsx';
     }
     return Object.assign({}, t, {
       source: 'JSON+XLSX',
-      status: match.status || t.status,
+      status: finalStatus,
       return_pct: match.return_pct || t.return_pct,
       duration_days, duration_source
     });
@@ -1057,11 +1073,15 @@ function fmtRp(v){ return v==null ? '—' : 'Rp'+Math.round(v).toLocaleString('i
 function fmtDate(d){ if(!d) return '—'; const dt=new Date(d); return dt.toLocaleDateString('id-ID',{year:'numeric',month:'2-digit',day:'2-digit'}); }
 function pctNum(s){ if (s==null) return null; const v=parseFloat(String(s).replace('%','').replace(',', '.')); return isNaN(v)?null:v; }
 
+const SUSPICIOUS_DURATION_MINUTES = 15; // durasi di bawah ini dianggap kejanggalan buat dicek (kemungkinan data backfill/replay, bukan pergerakan pasar riil)
 function durationSourceLabel(src){
   if (src==='confirm') return 'Durasi dari field durasi eksplisit di pesan konfirmasi (bot versi baru)';
   if (src==='result') return 'Durasi riil: selisih waktu pesan sinyal ke waktu pesan konfirmasi (TP HIT/LOCKED)';
   if (src==='xlsx') return 'Estimasi: selisih waktu sinyal ke tanggal snapshot XLSX (jam 17:30), dipakai karena gak ada pesan konfirmasi di JSON';
   return 'Belum diketahui';
+}
+function durationSourceIcon(src){
+  return src==='confirm' ? '📄' : src==='result' ? '⏱' : src==='xlsx' ? '≈' : '';
 }
 function formatDuration(t){
   if (t.duration_days==null) return '—';
@@ -1070,7 +1090,11 @@ function formatDuration(t){
   const hours = Math.floor((totalMinutes%1440)/60);
   const minutes = totalMinutes%60;
   const text = days+':'+String(hours).padStart(2,'0')+':'+String(minutes).padStart(2,'0');
-  return '<span title="'+durationSourceLabel(t.duration_source)+'">'+text+'</span>';
+  const icon = durationSourceIcon(t.duration_source);
+  const suspicious = totalMinutes < SUSPICIOUS_DURATION_MINUTES;
+  let title = durationSourceLabel(t.duration_source);
+  if (suspicious) title += ' — ⚠️ durasi sangat pendek (<'+SUSPICIOUS_DURATION_MINUTES+' menit), kemungkinan data backfill/replay bot, bukan pergerakan pasar riil';
+  return '<span title="'+title+'">'+text+' <span style="opacity:.6">'+icon+'</span>'+(suspicious?' ⚠️':'')+'</span>';
 }
 
 function renderAll(){
@@ -1086,12 +1110,12 @@ function renderAll(){
       'Rincian: <b>'+(srcCounts['JSON+XLSX']||0)+'</b> trade lengkap (JSON+XLSX), <b>'+(srcCounts['JSON']||0)+'</b> trade JSON saja (belum ada hasil final / pending), '+
       '<b>'+(srcCounts['XLSX']||0)+'</b> trade XLSX saja (di luar cakupan tanggal export Telegram, tanpa data teknikal). '+
       'Win rate di kartu statistik dihitung dari trade yang statusnya sudah final (TP HIT/SL HIT), exclude EXPIRED &amp; yang masih pending. '+
-      'Kolom <b>Durasi</b> (format hari:jam:menit): dari field durasi di pesan konfirmasi kalau ada, kalau tidak dari selisih waktu sinyal-konfirmasi (riil), kalau pesan konfirmasi gak ada (SL HIT/EXPIRED dari XLSX) pakai estimasi ke tanggal snapshot XLSX jam 17:30 — hover teks durasinya buat lihat sumbernya. "—" berarti belum ada datanya. '+
+      'Kolom <b>Durasi</b> (format hari:jam:menit): 📄 dari field durasi di pesan konfirmasi, ⏱ riil dari selisih waktu sinyal-konfirmasi, ≈ estimasi ke tanggal snapshot XLSX jam 17:30 (dipakai kalau gak ada pesan konfirmasi di JSON). Tanda ⚠️ = durasi kurang dari 15 menit, kemungkinan data backfill/replay bot bukan pergerakan pasar riil — layak dicek manual. "—" berarti belum ada datanya. '+
       '<br><b>Data tersimpan otomatis</b> ke akun kamu (online, via Supabase) dan juga di-cache lokal di browser ini. Klik "🗑 Hapus Data" untuk membersihkan.'
     : '<b>Catatan:</b> Channel Telegram ini hanya memposting update saat sinyal <i>profit</i> (TP HIT / Profit Terkunci / Profit Terus Naik). '+
       'Tidak ditemukan pesan Stop-Loss-Hit atau Expired secara publik — jadi sinyal berstatus <span class="amber-txt">NO RESULT</span> berarti belum ada '+
       'update publik, bukan berarti gagal. Klik <b>"+ Tambah/Update XLSX"</b> untuk melengkapi dengan status final (termasuk SL HIT/EXPIRED) dari dashboard.'+
-      'Kolom <b>Durasi</b> (format hari:jam:menit) baru lengkap setelah XLSX digabung — hover teksnya buat lihat sumber perhitungannya. "—" berarti belum ada datanya. '+
+      'Kolom <b>Durasi</b> (format hari:jam:menit): ⏱ riil dari selisih waktu sinyal-konfirmasi. Tanda ⚠️ = durasi kurang dari 15 menit, kemungkinan data backfill/replay bot. "—" berarti belum ada datanya. '+
       '<br><b>Data tersimpan otomatis</b> ke akun kamu (online, via Supabase) dan juga di-cache lokal di browser ini. Klik "🗑 Hapus Data" untuk membersihkan.';
 
   renderStats();
@@ -1204,8 +1228,53 @@ function setupTabs(){
   });
 }
 
+function sortValue(t, key){
+  switch(key){
+    case 'date': { const v=new Date(t.date).getTime(); return isNaN(v)?null:v; }
+    case 'symbol': return t.symbol || null;
+    case 'signal_type': return t.signal_type || null;
+    case 'entry_price': return t.entry_price!=null ? t.entry_price : null;
+    case 'stop_loss': return t.stop_loss!=null ? t.stop_loss : null;
+    case 'take_profit': return t.take_profit!=null ? t.take_profit : null;
+    case 'confidence_score': return t.confidence_score!=null ? t.confidence_score : null;
+    case 'status': return t.status || null;
+    case 'duration_days': return t.duration_days!=null ? t.duration_days : null;
+    case 'return_pct': return pctNum(t.return_pct);
+    case 'source': return t.source || null;
+    default: return null;
+  }
+}
+function sortTable(key){
+  if (!STATE.sort) STATE.sort = {key:'date', dir:-1};
+  if (STATE.sort.key === key) STATE.sort.dir *= -1;
+  else { STATE.sort.key = key; STATE.sort.dir = (key==='date') ? -1 : 1; }
+  STATE.page = 1;
+  renderTradesTable();
+}
+function sortArrow(key){
+  if (!STATE.sort || STATE.sort.key !== key) return '';
+  return STATE.sort.dir === 1 ? ' ▲' : ' ▼';
+}
 function renderTradesTable(){
-  const list = STATE.filtered;
+  if (!STATE.sort) STATE.sort = {key:'date', dir:-1};
+  const headCols = [
+    ['date','Tanggal'], ['symbol','Simbol'], ['signal_type','Signal'],
+    ['entry_price','Entry'], ['stop_loss','SL'], ['take_profit','TP'],
+    ['confidence_score','Confidence'], ['status','Status'],
+    ['duration_days','Durasi'], ['return_pct','Return'], ['source','Sumber']
+  ];
+  document.getElementById('tradesHeadRow').innerHTML = headCols.map(([key,label])=>
+    '<th style="cursor:pointer;user-select:none" onclick="sortTable(\''+key+'\')" title="Klik untuk urutkan">'+label+sortArrow(key)+'</th>'
+  ).join('');
+  const sk = STATE.sort.key, sd = STATE.sort.dir;
+  const list = STATE.filtered.slice().sort((a,b)=>{
+    const av = sortValue(a, sk), bv = sortValue(b, sk);
+    if (av==null && bv==null) return 0;
+    if (av==null) return 1;
+    if (bv==null) return -1;
+    if (typeof av === 'string') return av.localeCompare(bv) * sd;
+    return (av - bv) * sd;
+  });
   document.getElementById('tradeCount').textContent = list.length+' trade';
   const pageSize = STATE.pageSize;
   const totalPages = Math.max(1, Math.ceil(list.length/pageSize));
