@@ -46,7 +46,7 @@
   h1{ font-family:'Space Grotesk', sans-serif; font-size:26px; margin:0; font-weight:600; letter-spacing:-0.01em;}
   .topbar__mark--accent{ color:var(--accent-halal); }
   .sub{ color:var(--text-dim); font-size:13px; margin-top:4px; }
-  .file-controls{ display:flex; align-items:center; gap:10px; }
+  .file-controls{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
   .filename-tag{
     font-family:'IBM Plex Mono', monospace; font-size:12px; color:var(--text-dim);
     border:1px solid var(--line); padding:6px 10px; border-radius:var(--radius);
@@ -205,6 +205,12 @@
     .field-grid{ grid-template-columns:repeat(2,1fr); }
   }
   @media (max-width:600px){
+    .wrap{ padding:18px 14px 40px; }
+    header{ padding-bottom:14px; margin-bottom:18px; gap:12px; }
+    h1{ font-size:21px; }
+    .file-controls{ width:100%; gap:8px; }
+    .file-controls button{ font-size:12px; padding:7px 10px; flex:0 1 auto; }
+    .filename-tag{ max-width:100%; flex:1 1 100%; }
     .stats-grid{ grid-template-columns:repeat(2,1fr); }
     .field-grid{ grid-template-columns:1fr; gap:8px; }
     .overlay{ padding:12px 8px; }
@@ -1478,12 +1484,9 @@ function downloadExcel(){
 </html>
 <!--
   IDXSY Signal — Version Log
-  v1.1 - 2026-07-14 - Fix: modal/modalContent belum responsif di browser HP
-                       (overlay & modal padding diperkecil di layar ≤600px,
-                       modal-head anti-overflow untuk simbol/tipe sinyal panjang,
-                       overflow-wrap ditambahkan di field value/opinion/news/raw-text)
-  v1.0 - (baseline)  - Parser Telegram export (JSON) + dashboard scrape (XLSX) jadi
-                       trade journal; fitur durasi 3 tingkat (konfirmasi eksplisit,
-                       durasi riil, estimasi snapshot XLSX); matching sinyal↔konfirmasi
-                       via simbol+harga entry; sort tabel; export CSV & Excel multi-sheet
+  v1.2 - 2026-07-14 - Fix: file-controls (tombol upload JSON/XLSX, export, hapus data,
+                       sync badge, logout) belum responsif di HP — belum bisa wrap
+                       sehingga overflow horizontal. Ditambahkan flex-wrap pada
+                       .file-controls + penyesuaian ukuran header/.wrap/h1/button
+                       khusus layar ≤600px.
 -->
