@@ -831,7 +831,13 @@ async function checkAndSyncFromCloud(localSavedAt){
     STATE.filtered = STATE.trades.slice();
     renderAll();
     saveStateToDB(); // samakan cache lokal biar next-load gak perlu narik & hitung ulang lagi
-    updateSyncBadge('ok', { loadedAt: data.updated_at });
+    // PENTING: push juga hasil recompute ini balik ke Supabase (bukan cuma cache lokal).
+    // Tanpa ini, trades_data.payload.trades di DATABASE tetap basi (RUNNING/JSON) walau
+    // browser ini udah nampilin status final yang benar (TP HIT/SL HIT hasil merge XLSX) --
+    // konsumer lain yang baca trades_data LANGSUNG dari database (misal IDXSY Screener,
+    // yang share database yang sama) gak akan pernah lihat status yang sudah di-update
+    // kalau baris ini gak ada.
+    await saveStateToSupabase();
   } catch(err){ console.warn('Gagal sync dari cloud:', err); updateSyncBadge('error'); }
 }
 
@@ -1524,10 +1530,13 @@ function downloadExcel(){
 </html>
 <!--
   IDXSY Signal — Version Log
-  v1.6 - 2026-07-24 - Fitur: durasi sekarang prioritaskan `resolved_at` (timestamp
-                       presisi langsung dari Zeta Member Area, via sync_journal.py)
-                       ketimbang estimasi kasar jam 17:30 -- icon baru "✓" buat tier
-                       ini. Ganti label kolom Sumber: JSON→TG (Telegram), XLSX→MA
-                       (Member Area) -- cuma label tampilan, value internal (t.source)
-                       gak berubah, jadi gak ganggu logic manapun.
+  v1.7 - 2026-07-24 - Fix bug penting: checkAndSyncFromCloud() sekarang push hasil
+                       recompute trades[] BALIK ke Supabase (saveStateToSupabase()),
+                       gak cuma ke cache lokal. Sebelumnya (v1.5), status final hasil
+                       merge (TP HIT/SL HIT dari lastXlsxRows) cuma kesimpen di
+                       browser yang lagi dipakai -- trades_data.payload.trades di
+                       DATABASE tetap basi (RUNNING/JSON doang), jadi konsumer lain
+                       yang share database yang sama (IDXSY Screener) baca status
+                       yang salah/lama. Ketauan dari laporan IDXSY Screener nampilin
+                       warna kartu gak sinkron sama status IDXSY Signal.
 -->
