@@ -307,9 +307,9 @@
         </select>
         <select id="filterSource">
           <option value="">Semua Sumber</option>
-          <option value="JSON+XLSX">JSON + XLSX (lengkap)</option>
-          <option value="JSON">JSON saja (pending)</option>
-          <option value="XLSX">XLSX saja (di luar cakupan export)</option>
+          <option value="JSON+XLSX">TG + MA (lengkap)</option>
+          <option value="JSON">TG saja (pending)</option>
+          <option value="XLSX">MA saja (di luar cakupan Telegram)</option>
         </select>
         <div class="spacer"></div>
         <span class="count-tag" id="tradeCount"></span>
@@ -1057,7 +1057,13 @@ function mergeWithXlsxData(trades, xlsxRows){
       && finalStatus !== 'TP HIT' && finalStatus !== 'CLOSED (LOCKED)';
     let duration_days = jsonDurationInvalid ? null : t.duration_days;
     let duration_source = jsonDurationInvalid ? null : t.duration_source;
-    if (duration_days == null && xlsxConfirmTs){
+    if (duration_days == null && match.resolved_at){
+      // Prioritas baru: pakai timestamp resolved_at PRESISI langsung dari Zeta (via member
+      // API), bukan estimasi kasar jam 17:30 lagi. Jauh lebih akurat -- ini beneran kapan
+      // Zeta bilang trade ini selesai, bukan tebakan "jam tutup market".
+      duration_days = Math.round(((new Date(match.resolved_at).getTime() - new Date(t.date).getTime()) / 86400000)*1e6)/1e6;
+      duration_source = 'resolved_at';
+    } else if (duration_days == null && xlsxConfirmTs){
       duration_days = Math.round(((xlsxConfirmTs.getTime() - new Date(t.date).getTime()) / 86400000)*1e6)/1e6;
       duration_source = 'xlsx';
     }
@@ -1122,11 +1128,12 @@ const SUSPICIOUS_DURATION_MINUTES = 15; // durasi di bawah ini dianggap kejangga
 function durationSourceLabel(src){
   if (src==='confirm') return 'Durasi dari field durasi eksplisit di pesan konfirmasi (bot versi baru)';
   if (src==='result') return 'Durasi riil: selisih waktu pesan sinyal ke waktu pesan konfirmasi (TP HIT/LOCKED)';
-  if (src==='xlsx') return 'Estimasi: selisih waktu sinyal ke tanggal snapshot XLSX (jam 17:30), dipakai karena gak ada pesan konfirmasi di JSON';
+  if (src==='resolved_at') return 'Durasi riil: selisih waktu sinyal ke resolved_at (waktu selesai presisi langsung dari Zeta Member Area)';
+  if (src==='xlsx') return 'Estimasi kasar (data lama): selisih waktu sinyal ke tanggal snapshot XLSX (jam 17:30), dipakai karena gak ada resolved_at maupun pesan konfirmasi';
   return 'Belum diketahui';
 }
 function durationSourceIcon(src){
-  return src==='confirm' ? '📄' : src==='result' ? '⏱' : src==='xlsx' ? '≈' : '';
+  return src==='confirm' ? '📄' : src==='result' ? '⏱' : src==='resolved_at' ? '✓' : src==='xlsx' ? '≈' : '';
 }
 function formatDuration(t){
   if (t.duration_days==null) return '—';
@@ -1151,11 +1158,11 @@ function renderAll(){
   const srcCounts = STATE.trades.reduce((a,t)=>{ a[t.source]=(a[t.source]||0)+1; return a; }, {});
   const hasXlsx = (srcCounts['JSON+XLSX']||0) + (srcCounts['XLSX']||0) > 0;
   document.getElementById('dataNote').innerHTML = hasXlsx
-    ? '<b>Catatan:</b> Data digabung dari 2 sumber — Telegram export (konteks teknikal: MACD/RSI/EMA/dll) dan dashboard XLSX (status final TP HIT/SL HIT/EXPIRED). '+
+    ? '<b>Catatan:</b> Data digabung dari 2 sumber — <b>TG</b> (Telegram: konteks teknikal MACD/RSI/EMA/dll) dan <b>MA</b> (Member Area Zeta: status final TP HIT/SL HIT/EXPIRED, dan resolved_at buat durasi presisi). '+
       'Rincian: <b>'+(srcCounts['JSON+XLSX']||0)+'</b> trade lengkap (JSON+XLSX), <b>'+(srcCounts['JSON']||0)+'</b> trade JSON saja (belum ada hasil final / pending), '+
       '<b>'+(srcCounts['XLSX']||0)+'</b> trade XLSX saja (di luar cakupan tanggal export Telegram, tanpa data teknikal). '+
       'Win rate di kartu statistik dihitung dari trade yang statusnya sudah final (TP HIT/SL HIT), exclude EXPIRED &amp; yang masih pending. '+
-      'Kolom <b>Durasi</b> (format hari:jam:menit): 📄 dari field durasi di pesan konfirmasi, ⏱ riil dari selisih waktu sinyal-konfirmasi, ≈ estimasi ke tanggal snapshot XLSX jam 17:30 (dipakai kalau gak ada pesan konfirmasi di JSON). Tanda ⚠️ = durasi kurang dari 15 menit, kemungkinan data backfill/replay bot bukan pergerakan pasar riil — layak dicek manual. "—" berarti belum ada datanya. '+
+      'Kolom <b>Durasi</b> (format hari:jam:menit): 📄 dari field durasi di pesan konfirmasi, ⏱ riil dari selisih waktu sinyal-konfirmasi, ✓ riil dari resolved_at (waktu selesai presisi langsung dari Zeta Member Area), ≈ estimasi kasar ke tanggal snapshot jam 17:30 (data lama, dipakai kalau gak ada info lain). Tanda ⚠️ = durasi kurang dari 15 menit, kemungkinan data backfill/replay bot bukan pergerakan pasar riil — layak dicek manual. "—" berarti belum ada datanya. '+
       '<br><b>Data tersimpan otomatis</b> ke akun kamu (online, via Supabase) dan juga di-cache lokal di browser ini. Klik "🗑 Hapus Data" untuk membersihkan.'
     : '<b>Catatan:</b> Channel Telegram ini hanya memposting update saat sinyal <i>profit</i> (TP HIT / Profit Terkunci / Profit Terus Naik). '+
       'Tidak ditemukan pesan Stop-Loss-Hit atau Expired secara publik — jadi sinyal berstatus <span class="amber-txt">NO RESULT</span> berarti belum ada '+
@@ -1234,7 +1241,7 @@ function statusBadge(status){
 }
 function typeBadge(t){ return '<span class="badge '+(t==='BUY'?'badge-buy':'badge-watchlist')+'">'+t+'</span>'; }
 function sourceBadge(src){
-  const map = { 'JSON+XLSX':['badge-src-both','JSON+XLSX'], 'JSON':['badge-src-json','JSON'], 'XLSX':['badge-src-xlsx','XLSX'] };
+  const map = { 'JSON+XLSX':['badge-src-both','TG+MA'], 'JSON':['badge-src-json','TG'], 'XLSX':['badge-src-xlsx','MA'] };
   const [cls,label] = map[src] || ['badge-none', src||'—'];
   return '<span class="badge '+cls+'">'+label+'</span>';
 }
@@ -1517,13 +1524,10 @@ function downloadExcel(){
 </html>
 <!--
   IDXSY Signal — Version Log
-  v1.5 - 2026-07-21 - Fix arsitektur: checkAndSyncFromCloud() sekarang recompute
-                       trades[] dari signals[]/results[] setiap kali load dari cloud
-                       (pakai matchTrades + preserveXlsxMergeAcrossJsonUpdate +
-                       mergeWithXlsxData yang SAMA kayak upload JSON manual), BUKAN
-                       trust payload.trades[] mentah-mentah. Ini supaya automasi
-                       Telegram ingestion (TG-ING-01, nulis ke signals[]/results[]/
-                       regimes[] doang) otomatis ke-render begitu app dibuka, TANPA
-                       perlu upload JSON manual lagi. Logic matching/merge tetap 100%
-                       di sini (JS) sebagai satu-satunya sumber kebenaran.
+  v1.6 - 2026-07-24 - Fitur: durasi sekarang prioritaskan `resolved_at` (timestamp
+                       presisi langsung dari Zeta Member Area, via sync_journal.py)
+                       ketimbang estimasi kasar jam 17:30 -- icon baru "✓" buat tier
+                       ini. Ganti label kolom Sumber: JSON→TG (Telegram), XLSX→MA
+                       (Member Area) -- cuma label tampilan, value internal (t.source)
+                       gak berubah, jadi gak ganggu logic manapun.
 -->
