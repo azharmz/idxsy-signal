@@ -194,6 +194,18 @@ def parse_signal(text: str, msg_id: int, timestamp_iso: str) -> dict[str, Any]:
     row["bandar_signal"] = match1(r"Sinyal Bandar:\s*\S*\s*(\S+)", text)
     row["smart_money_net"] = match1(r"Smart Money Net:\s*([+\-][\w.,]+\s*\w*)", text)
 
+    buyer_block = re.search(r"Top Buyer:\s*\n([\s\S]*?)(?:\n\s*\n|🔴|Top Seller|📈|💡|$)", text)
+    if buyer_block:
+        buyers = [line.strip() for line in buyer_block.group(1).split("\n") if line.strip()]
+        for index, line in enumerate(buyers[:3], start=1):
+            row[f"top_buyer_{index}"] = line
+
+    seller_block = re.search(r"Top Seller:\s*\n([\s\S]*?)(?:\n\s*\n|📈|💡|$)", text)
+    if seller_block:
+        sellers = [line.strip() for line in seller_block.group(1).split("\n") if line.strip()]
+        for index, line in enumerate(sellers[:3], start=1):
+            row[f"top_seller_{index}"] = line
+
     beta_match = re.search(r"Beta:\s*([\d.]+)\s*\(([^)]+)\)\s*\|\s*Volatilitas:\s*(\d+)%", text)
     if beta_match:
         row["beta"] = float(beta_match.group(1))
