@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""IDXSY Signal S4 — canonical Zeta member API synchronization.
+"""IDXSY Signal S4 — canonical Zeta Member API synchronization.
 
 Authoritative flow:
     Zeta Member API -> source_records -> reconciliation/source link
                     -> outcome assertion -> canonical outcome resolver
 
-The incomplete public Zeta API is intentionally NOT a fallback. A member API
-failure fails the run so incomplete data cannot masquerade as a successful
-canonical sync.
+The incomplete public Zeta API is intentionally NOT a fallback. Member API
+failure makes the run fail/retry so a partial source cannot masquerade as a
+successful canonical synchronization.
 """
 
 from __future__ import annotations
@@ -16,7 +16,6 @@ import hashlib
 import json
 import logging
 import os
-import sys
 from datetime import datetime, timedelta, timezone
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -28,7 +27,6 @@ from urllib3.util.retry import Retry
 
 try:
     from backend.outcome_resolver import (
-        FINAL_ZETA_STATUSES,
         RESOLVER_VERSION,
         assertion_semantically_equal,
         build_assertion_payload,
@@ -37,7 +35,6 @@ try:
     from backend.reconciliation import match_zeta_to_telegram
 except ModuleNotFoundError:  # direct `python backend/zeta_sync.py`
     from outcome_resolver import (  # type: ignore
-        FINAL_ZETA_STATUSES,
         RESOLVER_VERSION,
         assertion_semantically_equal,
         build_assertion_payload,
@@ -70,6 +67,28 @@ def first_row(response: Any) -> dict[str, Any] | None:
     return rows[0] if rows else None
 
 
+def canonical_json(value: Any) -> str:
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
+
+
+def payload_equal(left: Any, right: Any) -> bool:
+    """Compare source payloads independently of the fingerprint algorithm.
+
+    Reconstruction and live ingestion intentionally may use different fingerprint
+    encodings. Raw payload equality is therefore the cross-version compatibility
+    boundary that prevents the first live run from rewriting 1,000 historical
+    Zeta sources merely because the parser/fingerprint implementation changed.
+    """
+    try:
+        return canonical_json(left) == canonical_json(right)
+    except (TypeError, ValueError):
+        return left == right
+
+
+def fingerprint_payload(raw: dict[str, Any]) -> str:
+    return hashlib.sha256(canonical_json(raw).encode("utf-8")).hexdigest()
+
+
 def member_session() -> requests.Session:
     retry = Retry(
         total=4,
@@ -92,6 +111,7 @@ def member_session() -> requests.Session:
 def fetch_member_signals() -> list[dict[str, Any]]:
     if not ZETA_MEMBER_COOKIE:
         raise RuntimeError("ZETA_MEMBER_COOKIE is required; public API fallback is disabled")
+
     cookie = ZETA_MEMBER_COOKIE if "=" in ZETA_MEMBER_COOKIE else f"zeta_member={ZETA_MEMBER_COOKIE}"
     response = member_session().get(
         MEMBER_API_URL,
@@ -103,6 +123,7 @@ def fetch_member_signals() -> list[dict[str, Any]]:
             f"Zeta member API auth failed ({response.status_code}); refresh ZETA_MEMBER_COOKIE"
         )
     response.raise_for_status()
+
     payload = response.json()
     if isinstance(payload, list):
         rows = payload
@@ -110,6 +131,7 @@ def fetch_member_signals() -> list[dict[str, Any]]:
         rows = payload["signals"]
     else:
         raise RuntimeError("Unexpected Zeta member API response shape")
+
     rows = [row for row in rows if isinstance(row, dict)]
     if not rows:
         raise RuntimeError("Zeta member API returned zero signal rows; refusing empty canonical sync")
@@ -128,24 +150,22 @@ def parse_wib_timestamp(value: Any) -> tuple[str | None, str | None]:
     return local.astimezone(UTC).isoformat(), local.date().isoformat()
 
 
-def fingerprint_payload(raw: dict[str, Any]) -> str:
-    canonical = json.dumps(raw, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
-    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
-
-
 def normalized_zeta(raw: dict[str, Any]) -> dict[str, Any]:
     if raw.get("id") is None:
         raise ValueError("Zeta row has no native id")
+
     source_utc, market_date = parse_wib_timestamp(raw.get("timestamp"))
     resolved_utc, _ = parse_wib_timestamp(raw.get("resolved_at"))
     if not source_utc:
         raise ValueError("Zeta row has invalid/missing timestamp")
-    symbol = str(raw.get("symbol") or "").strip().upper()
-    if not symbol:
+
+    ticker = str(raw.get("symbol") or "").strip().upper()
+    if not ticker:
         raise ValueError("Zeta row has no symbol")
+
     return {
         "zeta_id": str(raw["id"]),
-        "ticker": symbol,
+        "ticker": ticker,
         "signal_type": raw.get("decision"),
         "source_timestamp_raw": str(raw.get("timestamp") or ""),
         "source_timestamp_utc": source_utc,
@@ -206,17 +226,18 @@ def source_by_native_id(native_id: str) -> dict[str, Any] | None:
 
 
 def preserve_source(raw: dict[str, Any], batch_id: str) -> tuple[dict[str, Any], bool]:
-    """Persist native Zeta evidence before canonical interpretation.
+    """Persist source evidence first and preserve historical batch provenance.
 
-    Existing source rows retain their historical batch_id. Content evolution is
-    updated in-place because the current canonical schema has no source version table.
+    Same Zeta id is the same source record. Existing reconstruction rows are not
+    rewritten just because their fingerprint/parser version was produced by a
+    different importer. Only an actual raw-payload change constitutes source
+    evolution for the live path.
     """
     if raw.get("id") is None:
         raise ValueError("Cannot preserve Zeta source without native id")
+
     native_id = str(raw["id"])
     existing = source_by_native_id(native_id)
-    new_fingerprint = fingerprint_payload(raw)
-
     source_utc, market_date = parse_wib_timestamp(raw.get("timestamp"))
     payload = {
         "source_record_type": "SIGNAL",
@@ -225,38 +246,35 @@ def preserve_source(raw: dict[str, Any], batch_id: str) -> tuple[dict[str, Any],
         "source_timestamp_utc": source_utc,
         "market_date": market_date,
         "raw_payload": raw,
-        "fingerprint": new_fingerprint,
+        "fingerprint": fingerprint_payload(raw),
         "parser_version": PARSER_VERSION,
     }
 
     if existing:
-        changed = existing.get("fingerprint") != new_fingerprint or existing.get("parser_version") != PARSER_VERSION
-        if changed:
-            response = (
-                sb.table("source_records")
-                .update(payload)
-                .eq("id", existing["id"])
-                .eq("user_id", SUPABASE_USER_ID)
-                .execute()
-            )
-            row = first_row(response)
-            if row:
-                existing = row
-            else:
-                existing = source_by_native_id(native_id) or existing
-        return existing, changed
+        changed = not payload_equal(existing.get("raw_payload"), raw)
+        if not changed:
+            return existing, False
 
-    insert_payload = {
-        "user_id": SUPABASE_USER_ID,
-        "batch_id": batch_id,
-        "source_system": "ZETA",
-        "native_source_id": native_id,
-        **payload,
-    }
-    response = sb.table("source_records").insert(insert_payload).execute()
-    row = first_row(response)
-    if not row:
-        row = source_by_native_id(native_id)
+        response = (
+            sb.table("source_records")
+            .update(payload)
+            .eq("id", existing["id"])
+            .eq("user_id", SUPABASE_USER_ID)
+            .execute()
+        )
+        row = first_row(response)
+        return (row or source_by_native_id(native_id) or existing), True
+
+    response = sb.table("source_records").insert(
+        {
+            "user_id": SUPABASE_USER_ID,
+            "batch_id": batch_id,
+            "source_system": "ZETA",
+            "native_source_id": native_id,
+            **payload,
+        }
+    ).execute()
+    row = first_row(response) or source_by_native_id(native_id)
     if not row:
         raise RuntimeError(f"Failed to persist Zeta source {native_id}")
     return row, True
@@ -332,6 +350,7 @@ def record_reconciliation(
     if existing:
         sb.table("reconciliation_items").update(values).eq("id", existing["id"]).execute()
         return
+
     sb.table("reconciliation_items").insert(
         {
             "user_id": SUPABASE_USER_ID,
@@ -366,7 +385,6 @@ def derivation_complete(source: dict[str, Any], parsed: dict[str, Any]) -> bool:
     source_id = str(source["id"])
     link = link_for_source(source_id)
     if not link:
-        # An already-recorded ambiguity is a complete safe state for an unchanged source.
         return reconciliation_for_source(source_id, "AMBIGUOUS_ZETA_SIGNAL") is not None
     if not is_final_zeta_status(parsed.get("status")):
         return True
@@ -377,10 +395,12 @@ def derivation_complete(source: dict[str, Any], parsed: dict[str, Any]) -> bool:
 
 
 def telegram_candidates(parsed: dict[str, Any]) -> list[dict[str, Any]]:
+    """Return only canonical candidates backed by Telegram SIGNAL provenance."""
     ts = datetime.fromisoformat(parsed["source_timestamp_utc"])
     start = (ts - timedelta(seconds=300)).isoformat()
     end = (ts + timedelta(seconds=300)).isoformat()
-    signals_response = (
+
+    response = (
         sb.table("signals")
         .select("id,ticker,signal_timestamp,entry_price,tp1_price,sl_default_price")
         .eq("user_id", SUPABASE_USER_ID)
@@ -389,22 +409,24 @@ def telegram_candidates(parsed: dict[str, Any]) -> list[dict[str, Any]]:
         .lte("signal_timestamp", end)
         .execute()
     )
-    signals = signals_response.data or []
+    signals = response.data or []
     if not signals:
         return []
+
     signal_ids = [row["id"] for row in signals]
-    links_response = (
+    response = (
         sb.table("signal_source_links")
         .select("signal_id,source_record_id")
         .eq("user_id", SUPABASE_USER_ID)
         .in_("signal_id", signal_ids)
         .execute()
     )
-    links = links_response.data or []
+    links = response.data or []
     if not links:
         return []
+
     source_ids = [row["source_record_id"] for row in links]
-    tg_response = (
+    response = (
         sb.table("source_records")
         .select("id,native_source_id,source_timestamp_utc")
         .eq("user_id", SUPABASE_USER_ID)
@@ -413,30 +435,29 @@ def telegram_candidates(parsed: dict[str, Any]) -> list[dict[str, Any]]:
         .in_("id", source_ids)
         .execute()
     )
-    tg_by_id = {row["id"]: row for row in (tg_response.data or [])}
+    tg_by_id = {row["id"]: row for row in (response.data or [])}
+
     tg_by_signal: dict[str, dict[str, Any]] = {}
     for link in links:
         tg = tg_by_id.get(link["source_record_id"])
         if tg:
             tg_by_signal[str(link["signal_id"])] = tg
-    out: list[dict[str, Any]] = []
+
+    candidates: list[dict[str, Any]] = []
     for signal in signals:
         tg = tg_by_signal.get(str(signal["id"]))
-        if not tg:
-            continue
-        out.append(
-            {
-                **signal,
-                "telegram_source_record_id": tg["id"],
-                "telegram_msg_id": tg["native_source_id"],
-            }
-        )
-    return out
+        if tg:
+            candidates.append(
+                {
+                    **signal,
+                    "telegram_source_record_id": tg["id"],
+                    "telegram_msg_id": tg["native_source_id"],
+                }
+            )
+    return candidates
 
 
 def zeta_signal_payload(parsed: dict[str, Any]) -> dict[str, Any]:
-    # Do not manufacture TP/SL percentages or confidence semantics absent from
-    # the member source. Native source fields remain available in source_records.
     return {
         "ticker": parsed["ticker"],
         "signal_type": parsed.get("signal_type"),
@@ -460,11 +481,9 @@ def zeta_signal_payload(parsed: dict[str, Any]) -> dict[str, Any]:
 
 
 def ensure_zeta_signal(source: dict[str, Any], parsed: dict[str, Any], batch_id: str) -> str | None:
-    existing = link_for_source(str(source["id"]))
+    source_id = str(source["id"])
+    existing = link_for_source(source_id)
     if existing:
-        resolve_reconciliation(str(source["id"]), ["AMBIGUOUS_ZETA_SIGNAL", "UNPARSED_SOURCE"], "Zeta source successfully linked")
-        # Refresh ZETA_ONLY publication fields only; the RPC itself protects
-        # Telegram-owned publication snapshots from being overwritten.
         response = sb.rpc(
             "ensure_zeta_publication",
             {
@@ -473,9 +492,13 @@ def ensure_zeta_signal(source: dict[str, Any], parsed: dict[str, Any], batch_id:
                 "p_signal": zeta_signal_payload(parsed),
             },
         ).execute()
+        resolve_reconciliation(
+            source_id,
+            ["AMBIGUOUS_ZETA_SIGNAL", "UNPARSED_SOURCE"],
+            "Zeta source successfully linked",
+        )
         return str(response.data)
 
-    candidates = telegram_candidates(parsed)
     match = match_zeta_to_telegram(
         {
             "source_timestamp_utc": parsed["source_timestamp_utc"],
@@ -483,13 +506,13 @@ def ensure_zeta_signal(source: dict[str, Any], parsed: dict[str, Any], batch_id:
             "tp1_price": parsed.get("tp1_price"),
             "sl_default_price": parsed.get("sl_default_price"),
         },
-        candidates,
+        telegram_candidates(parsed),
     )
 
     if match.result == "AMBIGUOUS":
         record_reconciliation(
             batch_id=batch_id,
-            source_record_id=str(source["id"]),
+            source_record_id=source_id,
             item_type="AMBIGUOUS_ZETA_SIGNAL",
             status="REVIEW_REQUIRED",
             match_confidence="AMBIGUOUS",
@@ -520,7 +543,11 @@ def ensure_zeta_signal(source: dict[str, Any], parsed: dict[str, Any], batch_id:
                 },
             }
         ).execute()
-        resolve_reconciliation(str(source["id"]), ["AMBIGUOUS_ZETA_SIGNAL", "UNPARSED_SOURCE"], "Zeta source matched Telegram publication")
+        resolve_reconciliation(
+            source_id,
+            ["AMBIGUOUS_ZETA_SIGNAL", "UNPARSED_SOURCE"],
+            "Zeta source matched Telegram publication",
+        )
         return match.signal_id
 
     response = sb.rpc(
@@ -531,13 +558,18 @@ def ensure_zeta_signal(source: dict[str, Any], parsed: dict[str, Any], batch_id:
             "p_signal": zeta_signal_payload(parsed),
         },
     ).execute()
-    resolve_reconciliation(str(source["id"]), ["AMBIGUOUS_ZETA_SIGNAL", "UNPARSED_SOURCE"], "ZETA_ONLY publication created")
+    resolve_reconciliation(
+        source_id,
+        ["AMBIGUOUS_ZETA_SIGNAL", "UNPARSED_SOURCE"],
+        "ZETA_ONLY publication created",
+    )
     return str(response.data)
 
 
 def upsert_assertion(source: dict[str, Any], signal_id: str, parsed: dict[str, Any], batch_id: str) -> bool:
     source_id = str(source["id"])
     existing = assertion_for_source(source_id)
+
     if not is_final_zeta_status(parsed.get("status")):
         if existing:
             record_reconciliation(
@@ -562,6 +594,7 @@ def upsert_assertion(source: dict[str, Any], signal_id: str, parsed: dict[str, A
         source_record_id=source_id,
         source=parsed,
     )
+
     changed = True
     if existing:
         changed = not assertion_semantically_equal(existing, assertion)
@@ -578,8 +611,6 @@ def upsert_assertion(source: dict[str, Any], signal_id: str, parsed: dict[str, A
     else:
         sb.table("signal_outcome_assertions").insert(assertion).execute()
 
-    # Resolver always chooses the latest Zeta assertion for this signal, so
-    # replaying an older source can never roll the canonical outcome backward.
     sb.rpc(
         "resolve_zeta_outcome",
         {"p_user_id": SUPABASE_USER_ID, "p_signal_id": signal_id},
@@ -590,6 +621,7 @@ def upsert_assertion(source: dict[str, Any], signal_id: str, parsed: dict[str, A
 
 def process_source(raw: dict[str, Any], batch_id: str) -> dict[str, Any]:
     source, changed = preserve_source(raw, batch_id)
+
     try:
         parsed = normalized_zeta(raw)
     except Exception as exc:
@@ -612,7 +644,11 @@ def process_source(raw: dict[str, Any], batch_id: str) -> dict[str, Any]:
         return {"result": "UNPARSED", "changed": changed, "final": False}
 
     if not changed and derivation_complete(source, parsed):
-        return {"result": "UNCHANGED", "changed": False, "final": is_final_zeta_status(parsed.get("status"))}
+        return {
+            "result": "UNCHANGED",
+            "changed": False,
+            "final": is_final_zeta_status(parsed.get("status")),
+        }
 
     signal_id = ensure_zeta_signal(source, parsed, batch_id)
     if not signal_id:
@@ -641,9 +677,11 @@ def main() -> None:
         "member_api_only": True,
         "resolver_version": RESOLVER_VERSION,
     }
+
     try:
         rows = fetch_member_signals()
         stats["api_rows"] = len(rows)
+
         for raw in rows:
             result = process_source(raw, batch_id)
             if result.get("final"):
@@ -659,7 +697,11 @@ def main() -> None:
             if result.get("assertion_changed"):
                 stats["assertions_changed"] += 1
 
-        final_status = "PARTIAL_REVIEW_REQUIRED" if stats["unparsed"] or stats["ambiguous"] else "VERIFIED"
+        final_status = (
+            "PARTIAL_REVIEW_REQUIRED"
+            if stats["unparsed"] or stats["ambiguous"]
+            else "VERIFIED"
+        )
         finish_batch(batch_id, final_status, stats)
         log.info("Zeta S4 complete: %s", stats)
     except Exception as exc:
