@@ -5,6 +5,7 @@ ROOT = Path(__file__).resolve().parents[1]
 INGEST = (ROOT / "backend" / "telegram_ingest.py").read_text(encoding="utf-8")
 PARSER = (ROOT / "backend" / "telegram_parser.py").read_text(encoding="utf-8")
 MIGRATION = (ROOT / "supabase" / "migrations" / "20260907_signal_s3_live_ingestion.sql").read_text(encoding="utf-8")
+RPC_PERMISSIONS = (ROOT / "supabase" / "migrations" / "20260907_signal_s3_rpc_permissions.sql").read_text(encoding="utf-8")
 
 
 def test_no_new_trades_data_dependency():
@@ -16,11 +17,11 @@ def test_native_source_identity_and_source_first_contract_present():
     assert '"source_system": "TELEGRAM"' in INGEST
     assert '"native_source_id": native_id' in INGEST
     assert 'table("source_records")' in INGEST
-    assert "source, changed = preserve_source(message, batch_id)" in INGEST
+    assert "source, needs_reprocess = preserve_source(message, batch_id)" in INGEST
 
 
 def test_cursor_advances_only_after_source_preservation_in_loop():
-    preserve_at = INGEST.index("source, changed = preserve_source(message, batch_id)")
+    preserve_at = INGEST.index("source, needs_reprocess = preserve_source(message, batch_id)")
     cursor_at = INGEST.index("set_cursor(safe_frontier)", preserve_at)
     assert preserve_at < cursor_at
 
@@ -56,6 +57,12 @@ def test_recent_edit_scan_does_not_use_offset_date_backwards_semantics():
     assert '"offset_date"' not in INGEST
 
 
+def test_unchanged_complete_sources_are_not_rewritten_on_rescan():
+    assert "def source_derivation_complete" in INGEST
+    assert "elif source_derivation_complete(source):" in INGEST
+    assert 'summary["skipped_unchanged_complete"] += 1' in INGEST
+
+
 def test_gap_001_unique_event_source_index_present():
     assert "CREATE UNIQUE INDEX IF NOT EXISTS signal_events_source_unique_idx" in MIGRATION
     assert "ON public.signal_events (source_record_id)" in MIGRATION
@@ -73,3 +80,10 @@ def test_edited_publication_updates_same_linked_signal():
     assert "IF v_signal_id IS NOT NULL THEN" in MIGRATION
     assert "UPDATE public.signals" in MIGRATION
     assert "RETURN v_signal_id" in MIGRATION
+
+
+def test_publication_rpc_is_backend_only():
+    assert "FROM PUBLIC" in RPC_PERMISSIONS
+    assert "FROM anon" in RPC_PERMISSIONS
+    assert "FROM authenticated" in RPC_PERMISSIONS
+    assert "TO service_role" in RPC_PERMISSIONS
