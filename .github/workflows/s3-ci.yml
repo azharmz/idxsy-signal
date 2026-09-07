@@ -1,0 +1,23 @@
+name: s3-ci
+
+on:
+  pull_request:
+    paths:
+      - 'backend/**'
+      - 'tests/**'
+      - 'supabase/migrations/**'
+      - 'requirements.txt'
+      - '.github/workflows/**'
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install -r requirements.txt
+      - run: pytest -q
+      - run: python -m py_compile backend/telegram_parser.py backend/telegram_ingest.py
