@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>IDXSY Signal</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+:root{--bg:#0b1020;--panel:#11182b;--panel2:#151e34;--line:#26324c;--text:#edf2ff;--muted:#91a0bb;--accent:#7aa2ff;--ok:#63d297;--bad:#ff7c8a;--warn:#f3c969;--radius:12px;font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;color-scheme:dark}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-size:14px}.hidden{display:none!important}button,input,select{font:inherit}button{cursor:pointer}.app{max-width:1480px;margin:auto;padding:20px}.top{display:flex;gap:12px;align-items:center;margin-bottom:18px}.brand{font-weight:800;font-size:19px;letter-spacing:.02em}.brand small{font-size:11px;font-weight:600;color:var(--muted);margin-left:8px}.spacer{flex:1}.tag{padding:5px 9px;border:1px solid var(--line);border-radius:999px;color:var(--muted);font-size:12px}.btn{border:1px solid var(--line);background:var(--panel2);color:var(--text);padding:8px 11px;border-radius:9px}.btn:hover{border-color:#405174}.btn.primary{background:#233c78;border-color:#33549b}.auth{max-width:390px;margin:11vh auto;background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:24px;box-shadow:0 20px 80px #0007}.auth h1{font-size:21px;margin:0 0 4px}.auth p{color:var(--muted);margin:0 0 20px}.field{margin:12px 0}.field label{display:block;color:var(--muted);font-size:12px;margin-bottom:6px}.field input{width:100%;padding:10px 11px;background:#0c1324;border:1px solid var(--line);border-radius:9px;color:var(--text)}.msg{min-height:20px;color:var(--bad);font-size:12px;margin-top:10px}.toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;background:var(--panel);padding:12px;border:1px solid var(--line);border-radius:12px 12px 0 0}.toolbar input,.toolbar select{background:#0c1324;color:var(--text);border:1px solid var(--line);border-radius:8px;padding:8px 9px}.toolbar input{min-width:200px}.table-wrap{overflow:auto;border:1px solid var(--line);border-top:0;border-radius:0 0 12px 12px;background:var(--panel)}table{border-collapse:collapse;width:100%;min-width:1020px}th,td{padding:10px 11px;border-bottom:1px solid #202b43;text-align:left;white-space:nowrap}th{position:sticky;top:0;background:#131c31;color:#aab7cd;font-size:11px;text-transform:uppercase;letter-spacing:.04em}th.sortable{cursor:pointer;user-select:none}th.sortable:hover{color:var(--text)}tbody tr{cursor:pointer}tbody tr:hover{background:#16213a}.mono{font-variant-numeric:tabular-nums;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}.ticker{font-weight:800;color:#fff}.badge{display:inline-flex;align-items:center;padding:3px 7px;border-radius:999px;font-size:11px;border:1px solid var(--line)}.badge.ok{color:var(--ok);border-color:#28593f;background:#123221}.badge.bad{color:var(--bad);border-color:#68303a;background:#35171e}.badge.warn{color:var(--warn);border-color:#65572e;background:#302913}.badge.neutral{color:#c1cbe0}.source{font-size:11px;color:#c8d3e7}.pagination{display:flex;gap:6px;align-items:center;justify-content:flex-end;margin-top:12px}.pagination .meta{color:var(--muted);margin-right:8px}.loading{text-align:center;color:var(--muted);padding:28px}.empty{text-align:center;color:var(--muted);padding:36px}.overlay{position:fixed;inset:0;background:#050811cc;display:none;align-items:flex-start;justify-content:center;padding:5vh 16px;z-index:20;overflow:auto}.overlay.show{display:flex}.modal{width:min(900px,100%);background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:20px;box-shadow:0 24px 100px #000}.modal-head{display:flex;align-items:flex-start;gap:10px}.modal-head h2{margin:0;font-size:21px}.modal-sub{color:var(--muted);font-size:12px;margin-top:4px}.close{margin-left:auto}.grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px;margin:18px 0}.kv{background:var(--panel2);border:1px solid #202d47;border-radius:9px;padding:9px}.kv .k{color:var(--muted);font-size:10px;text-transform:uppercase;margin-bottom:4px}.kv .v{font-weight:650;overflow-wrap:anywhere}.section{margin-top:18px}.section h3{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:#a9b7cf;margin:0 0 8px}.timeline{border-left:2px solid #293754;margin-left:7px}.event{padding:0 0 14px 14px;position:relative}.event:before{content:"";position:absolute;left:-6px;top:4px;width:10px;height:10px;border-radius:50%;background:var(--accent)}.event .time{color:var(--muted);font-size:11px}.event pre,.raw pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#0b1222;border:1px solid #202d47;padding:10px;border-radius:8px;color:#c9d5e8;max-height:300px;overflow:auto}.source-card{border:1px solid #26324c;border-radius:10px;padding:10px;margin:8px 0;background:#0e1628}.source-card summary{cursor:pointer;font-weight:700}.error-box{background:#361820;color:#ffb0b8;border:1px solid #6b2d38;padding:10px;border-radius:9px;margin:10px 0}.footer{color:#61718e;text-align:center;font-size:11px;padding:18px 0}@media(max-width:760px){.app{padding:10px}.grid{grid-template-columns:repeat(2,minmax(0,1fr))}.top{flex-wrap:wrap}.toolbar>*{flex:1}.toolbar input{min-width:0}.tag{display:none}}
+</style>
+</head>
+<body>
+<div id="auth" class="auth">
+  <h1>IDXSY Signal</h1>
+  <p>Canonical signal viewer</p>
+  <form id="loginForm">
+    <div class="field"><label>Email</label><input id="email" type="email" autocomplete="username" required></div>
+    <div class="field"><label>Password</label><input id="password" type="password" autocomplete="current-password" required></div>
+    <button class="btn primary" style="width:100%" type="submit">Masuk</button>
+    <div id="authMsg" class="msg"></div>
+  </form>
+</div>
+
+<div id="app" class="app hidden">
+  <div class="top">
+    <div class="brand">IDXSY Signal <small>CANONICAL VIEWER</small></div>
+    <span id="countTag" class="tag">—</span>
+    <div class="spacer"></div>
+    <span id="userTag" class="tag"></span>
+    <button id="reloadBtn" class="btn">↻ Refresh</button>
+    <button id="logoutBtn" class="btn">Keluar</button>
+  </div>
+
+  <div class="toolbar">
+    <input id="search" placeholder="Cari ticker…" maxlength="16">
+    <select id="typeFilter">
+      <option value="">Semua signal</option>
+      <option value="BUY">BUY</option>
+      <option value="WATCHLIST">WATCHLIST</option>
+      <option value="SELL">SELL</option>
+    </select>
+    <select id="pageSize">
+      <option value="25">25 / halaman</option>
+      <option value="50">50 / halaman</option>
+      <option value="100">100 / halaman</option>
+    </select>
+    <span class="spacer"></span>
+    <span class="tag">Sort/filter/pagination: Supabase</span>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr>
+        <th class="sortable" data-sort="signal_timestamp">Tanggal <span data-arrow="signal_timestamp"></span></th>
+        <th class="sortable" data-sort="ticker">Ticker <span data-arrow="ticker"></span></th>
+        <th class="sortable" data-sort="signal_type">Signal <span data-arrow="signal_type"></span></th>
+        <th class="sortable" data-sort="entry_price">Entry <span data-arrow="entry_price"></span></th>
+        <th class="sortable" data-sort="tp1_price">TP1 <span data-arrow="tp1_price"></span></th>
+        <th class="sortable" data-sort="sl_default_price">SL <span data-arrow="sl_default_price"></span></th>
+        <th class="sortable" data-sort="confidence_score">Confidence <span data-arrow="confidence_score"></span></th>
+        <th>Outcome</th>
+        <th>Profit</th>
+        <th>Sumber</th>
+      </tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+    <div id="tableState" class="loading">Memuat…</div>
+  </div>
+  <div class="pagination">
+    <span id="pageMeta" class="meta"></span>
+    <button id="prevBtn" class="btn">‹</button>
+    <button id="nextBtn" class="btn">›</button>
+  </div>
+  <div class="footer">Backend owns canonical processing · frontend reads canonical state only</div>
+</div>
+
+<div id="overlay" class="overlay"><div class="modal">
+  <div class="modal-head"><div><h2 id="modalTitle">—</h2><div id="modalSub" class="modal-sub"></div></div><button id="closeBtn" class="btn close">×</button></div>
+  <div id="modalBody"></div>
+</div></div>
+
+<script>
+const SUPABASE_URL='https://gfxhtpqzebxycijdnpjp.supabase.co';
+const SUPABASE_ANON_KEY='sb_publishable_BXkSOULyV06I6N6DhIIAdw_TJXQUGOS';
+const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
+const state={user:null,page:1,pageSize:25,total:0,sort:'signal_timestamp',ascending:false,search:'',type:'',items:[],outcomes:new Map(),sources:new Map(),loading:false,loadSeq:0};
+const $=id=>document.getElementById(id);
+const escapeHtml=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const money=value=>value==null?'—':new Intl.NumberFormat('id-ID',{maximumFractionDigits:2}).format(Number(value));
+const pct=value=>value==null?'—':`${Number(value)>=0?'+':''}${Number(value).toFixed(2)}%`;
+const dt=value=>value?new Intl.DateTimeFormat('id-ID',{timeZone:'Asia/Makassar',day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}).format(new Date(value)):'—';
+const outcomeClass=s=>s==='TP_HIT'?'ok':s==='SL_HIT'?'bad':s==='EXPIRED'?'warn':'neutral';
+const badge=(text,cls='neutral')=>`<span class="badge ${cls}">${escapeHtml(text||'—')}</span>`;
+const directSorts=new Set(['signal_timestamp','ticker','signal_type','entry_price','tp1_price','sl_default_price','confidence_score']);
+
+function showAuth(){ $('auth').classList.remove('hidden');$('app').classList.add('hidden'); }
+function showApp(){ $('auth').classList.add('hidden');$('app').classList.remove('hidden');$('userTag').textContent=state.user?.email||''; }
+
+$('loginForm').addEventListener('submit',async e=>{e.preventDefault();$('authMsg').textContent='';const btn=e.submitter;btn.disabled=true;try{const {data,error}=await sb.auth.signInWithPassword({email:$('email').value.trim(),password:$('password').value});if(error)throw error;state.user=data.user;showApp();await loadPage();}catch(err){$('authMsg').textContent=err.message||'Login gagal';}finally{btn.disabled=false;}});
+$('logoutBtn').onclick=async()=>{await sb.auth.signOut();state.user=null;showAuth();};
+$('reloadBtn').onclick=()=>loadPage();
+$('prevBtn').onclick=()=>{if(state.page>1){state.page--;loadPage();}};
+$('nextBtn').onclick=()=>{if(state.page*state.pageSize<state.total){state.page++;loadPage();}};
+$('pageSize').onchange=e=>{state.pageSize=Number(e.target.value);state.page=1;loadPage();};
+$('typeFilter').onchange=e=>{state.type=e.target.value;state.page=1;loadPage();};
+let searchTimer=null;$('search').oninput=e=>{clearTimeout(searchTimer);searchTimer=setTimeout(()=>{state.search=e.target.value.trim().toUpperCase();state.page=1;loadPage();},250);};
+document.querySelectorAll('th[data-sort]').forEach(th=>th.onclick=()=>{const key=th.dataset.sort;if(!directSorts.has(key))return;if(state.sort===key)state.ascending=!state.ascending;else{state.sort=key;state.ascending=true;}state.page=1;loadPage();});
+$('closeBtn').onclick=closeModal;$('overlay').onclick=e=>{if(e.target===$('overlay'))closeModal();};document.addEventListener('keydown',e=>{if(e.key==='Escape')closeModal();});
+
+async function loadPage(){
+  if(!state.user||state.loading)return;
+  state.loading=true;const seq=++state.loadSeq;$('tableState').className='loading';$('tableState').textContent='Memuat…';$('tableState').style.display='block';$('rows').innerHTML='';
+  try{
+    const from=(state.page-1)*state.pageSize,to=from+state.pageSize-1;
+    let query=sb.from('signals').select('id,ticker,signal_type,signal_timestamp,market_date,entry_price,tp1_price,tp1_pct,sl_default_price,sl_default_pct,confidence_score,confidence_label',{count:'exact'});
+    if(state.search)query=query.ilike('ticker',`%${state.search}%`);
+    if(state.type)query=query.eq('signal_type',state.type);
+    query=query.order(state.sort,{ascending:state.ascending,nullsFirst:false}).range(from,to);
+    const {data,error,count}=await query;if(error)throw error;if(seq!==state.loadSeq)return;
+    state.items=data||[];state.total=count||0;
+    await hydratePage(state.items.map(x=>x.id));if(seq!==state.loadSeq)return;
+    renderRows();renderPagination();
+  }catch(err){$('tableState').className='error-box';$('tableState').textContent=err.message||String(err);$('tableState').style.display='block';}
+  finally{state.loading=false;}
+}
+
+async function hydratePage(ids){
+  state.outcomes=new Map();state.sources=new Map();if(!ids.length)return;
+  const [outcomeRes,linkRes]=await Promise.all([
+    sb.from('signal_outcomes').select('signal_id,outcome_status,resolved_at,authority,supporting_evidence').in('signal_id',ids).is('superseded_at',null),
+    sb.from('signal_source_links').select('signal_id,source_record_id').in('signal_id',ids)
+  ]);
+  if(outcomeRes.error)throw outcomeRes.error;if(linkRes.error)throw linkRes.error;
+  for(const row of outcomeRes.data||[])state.outcomes.set(row.signal_id,row);
+  const links=linkRes.data||[],sourceIds=[...new Set(links.map(x=>x.source_record_id))];
+  let sources=[];if(sourceIds.length){const res=await sb.from('source_records').select('id,source_system,native_source_id').in('id',sourceIds);if(res.error)throw res.error;sources=res.data||[];}
+  const bySource=new Map(sources.map(x=>[x.id,x]));for(const link of links){const src=bySource.get(link.source_record_id);if(!src)continue;if(!state.sources.has(link.signal_id))state.sources.set(link.signal_id,[]);state.sources.get(link.signal_id).push(src);}
+}
+
+function renderRows(){
+  $('tableState').style.display=state.items.length?'none':'block';if(!state.items.length){$('tableState').className='empty';$('tableState').textContent='Tidak ada signal.';}
+  $('rows').innerHTML=state.items.map(s=>{const o=state.outcomes.get(s.id),src=state.sources.get(s.id)||[],systems=[...new Set(src.map(x=>x.source_system))];return `<tr data-id="${s.id}"><td class="mono">${escapeHtml(dt(s.signal_timestamp))}</td><td class="ticker">${escapeHtml(s.ticker)}</td><td>${badge(s.signal_type)}</td><td class="mono">${money(s.entry_price)}</td><td class="mono">${money(s.tp1_price)}</td><td class="mono">${money(s.sl_default_price)}</td><td>${s.confidence_score==null?'—':escapeHtml(`${s.confidence_score}/10 ${s.confidence_label||''}`)}</td><td>${o?badge(o.outcome_status,outcomeClass(o.outcome_status)):badge('OPEN / NO OUTCOME')}</td><td class="mono">${o?.supporting_evidence?.profit_pct==null?'—':pct(o.supporting_evidence.profit_pct)}</td><td class="source">${escapeHtml(systems.join(' + ')||'—')}</td></tr>`;}).join('');
+  $('rows').querySelectorAll('tr').forEach(tr=>tr.onclick=()=>openDetail(tr.dataset.id));
+  document.querySelectorAll('[data-arrow]').forEach(el=>el.textContent=el.dataset.arrow===state.sort?(state.ascending?'▲':'▼'):'');
+  $('countTag').textContent=`${state.total.toLocaleString('id-ID')} signal`;
+}
+
+function renderPagination(){const pages=Math.max(1,Math.ceil(state.total/state.pageSize));$('pageMeta').textContent=`Halaman ${state.page} / ${pages}`;$('prevBtn').disabled=state.page<=1;$('nextBtn').disabled=state.page>=pages;}
+
+async function openDetail(id){
+  $('overlay').classList.add('show');$('modalTitle').textContent='Memuat…';$('modalSub').textContent='';$('modalBody').innerHTML='<div class="loading">Mengambil canonical detail…</div>';
+  try{
+    const [signalRes,outcomeRes,eventRes,linkRes]=await Promise.all([
+      sb.from('signals').select('*').eq('id',id).single(),
+      sb.from('signal_outcomes').select('*').eq('signal_id',id).is('superseded_at',null).maybeSingle(),
+      sb.from('signal_events').select('id,event_type,event_timestamp,event_data,source_record_id').eq('signal_id',id).order('event_timestamp',{ascending:true}),
+      sb.from('signal_source_links').select('source_record_id,match_method,match_confidence,evidence,review_status').eq('signal_id',id)
+    ]);
+    if(signalRes.error)throw signalRes.error;if(outcomeRes.error)throw outcomeRes.error;if(eventRes.error)throw eventRes.error;if(linkRes.error)throw linkRes.error;
+    const s=signalRes.data,o=outcomeRes.data,events=eventRes.data||[],links=linkRes.data||[];
+    const sourceIds=[...new Set(links.map(x=>x.source_record_id).concat(events.map(x=>x.source_record_id).filter(Boolean)))];let sources=[];
+    if(sourceIds.length){const r=await sb.from('source_records').select('id,source_system,native_source_id,source_record_type,source_timestamp_utc,parser_version,raw_text,raw_payload').in('id',sourceIds);if(r.error)throw r.error;sources=r.data||[];}
+    const bySource=new Map(sources.map(x=>[x.id,x]));
+    $('modalTitle').textContent=`${s.ticker} · ${s.signal_type||'—'}`;$('modalSub').textContent=`${dt(s.signal_timestamp)} · ${s.id}`;
+    const summary=[['Entry',money(s.entry_price)],['TP1',money(s.tp1_price)],['SL',money(s.sl_default_price)],['Confidence',s.confidence_score==null?'—':`${s.confidence_score}/10 ${s.confidence_label||''}`],['Outcome',o?.outcome_status||'—'],['Resolved',dt(o?.resolved_at)],['Authority',o?.authority||'—'],['Market date',s.market_date||'—']];
+    let html=`<div class="grid">${summary.map(([k,v])=>`<div class="kv"><div class="k">${escapeHtml(k)}</div><div class="v">${escapeHtml(v)}</div></div>`).join('')}</div>`;
+    html+=`<div class="section"><h3>Publication detail</h3><div class="raw"><pre>${escapeHtml(JSON.stringify(s.detail||{},null,2))}</pre></div></div>`;
+    html+=`<div class="section"><h3>Event history (${events.length})</h3>${events.length?`<div class="timeline">${events.map(e=>`<div class="event"><strong>${escapeHtml(e.event_type)}</strong><div class="time">${escapeHtml(dt(e.event_timestamp))}</div><pre>${escapeHtml(JSON.stringify(e.event_data||{},null,2))}</pre></div>`).join('')}</div>`:'<div class="tag">Belum ada event.</div>'}</div>`;
+    html+=`<div class="section"><h3>Provenance (${links.length})</h3>${links.map(l=>{const src=bySource.get(l.source_record_id)||{};const raw=src.raw_text||JSON.stringify(src.raw_payload||{},null,2);return `<details class="source-card"><summary>${escapeHtml(src.source_system||'SOURCE')} #${escapeHtml(src.native_source_id||'—')} · ${escapeHtml(l.match_method)}</summary><div class="modal-sub">${escapeHtml(l.match_confidence)} · parser ${escapeHtml(src.parser_version||'—')} · ${escapeHtml(dt(src.source_timestamp_utc))}</div><pre>${escapeHtml(raw)}</pre></details>`;}).join('')||'<div class="tag">Tidak ada source link.</div>'}</div>`;
+    $('modalBody').innerHTML=html;
+  }catch(err){$('modalTitle').textContent='Gagal memuat';$('modalBody').innerHTML=`<div class="error-box">${escapeHtml(err.message||String(err))}</div>`;}
+}
+function closeModal(){$('overlay').classList.remove('show');}
+
+async function init(){const {data:{session}}=await sb.auth.getSession();if(session?.user){state.user=session.user;showApp();await loadPage();}else showAuth();}
+init();
+</script>
+</body>
+</html>
