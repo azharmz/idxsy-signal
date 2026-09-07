@@ -20,8 +20,7 @@ WHERE source_record_id IS NOT NULL;
 
 -- ---------------------------------------------------------------------------
 -- GAP-002: atomically create/reuse a Telegram publication signal + source link.
--- The source record is the idempotency anchor. One source_record may link to only
--- one canonical signal (already enforced by signal_source_links_source_unique).
+-- If the same Telegram message was edited, update the SAME canonical signal.
 -- ---------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public.ensure_telegram_publication(
     p_user_id uuid,
@@ -48,15 +47,6 @@ BEGIN
         RAISE EXCEPTION 'Telegram source_record % not found for user %', p_source_record_id, p_user_id;
     END IF;
 
-    SELECT signal_id
-      INTO v_signal_id
-      FROM public.signal_source_links
-     WHERE source_record_id = p_source_record_id;
-
-    IF v_signal_id IS NOT NULL THEN
-        RETURN v_signal_id;
-    END IF;
-
     IF NULLIF(p_signal->>'ticker', '') IS NULL THEN
         RAISE EXCEPTION 'ticker is required for Telegram publication source %', p_source_record_id;
     END IF;
@@ -67,6 +57,41 @@ BEGIN
 
     IF NULLIF(p_signal->>'market_date', '') IS NULL THEN
         RAISE EXCEPTION 'market_date is required for Telegram publication source %', p_source_record_id;
+    END IF;
+
+    SELECT signal_id
+      INTO v_signal_id
+      FROM public.signal_source_links
+     WHERE source_record_id = p_source_record_id;
+
+    IF v_signal_id IS NOT NULL THEN
+        UPDATE public.signals
+           SET ticker = p_signal->>'ticker',
+               signal_type = NULLIF(p_signal->>'signal_type', ''),
+               signal_timestamp = (p_signal->>'signal_timestamp')::timestamptz,
+               market_date = (p_signal->>'market_date')::date,
+               entry_price = NULLIF(p_signal->>'entry_price', '')::numeric,
+               tp1_price = NULLIF(p_signal->>'tp1_price', '')::numeric,
+               tp1_pct = NULLIF(p_signal->>'tp1_pct', '')::numeric,
+               tp2_price = NULLIF(p_signal->>'tp2_price', '')::numeric,
+               tp2_pct = NULLIF(p_signal->>'tp2_pct', '')::numeric,
+               sl_default_price = NULLIF(p_signal->>'sl_default_price', '')::numeric,
+               sl_default_pct = NULLIF(p_signal->>'sl_default_pct', '')::numeric,
+               sl_moderat_price = NULLIF(p_signal->>'sl_moderat_price', '')::numeric,
+               sl_moderat_pct = NULLIF(p_signal->>'sl_moderat_pct', '')::numeric,
+               sl_konservatif_price = NULLIF(p_signal->>'sl_konservatif_price', '')::numeric,
+               sl_konservatif_pct = NULLIF(p_signal->>'sl_konservatif_pct', '')::numeric,
+               confidence_score = NULLIF(p_signal->>'confidence_score', '')::numeric,
+               confidence_label = NULLIF(p_signal->>'confidence_label', ''),
+               detail = COALESCE(p_signal->'detail', '{}'::jsonb)
+         WHERE id = v_signal_id
+           AND user_id = p_user_id;
+
+        IF NOT FOUND THEN
+            RAISE EXCEPTION 'Linked signal % not found for Telegram source %', v_signal_id, p_source_record_id;
+        END IF;
+
+        RETURN v_signal_id;
     END IF;
 
     INSERT INTO public.signals (
@@ -139,4 +164,4 @@ END;
 $$;
 
 COMMENT ON FUNCTION public.ensure_telegram_publication(uuid, uuid, jsonb)
-IS 'IDXSY Signal S3: atomically create/reuse canonical signal + Telegram source link.';
+IS 'IDXSY Signal S3: atomically create/update canonical Telegram publication and preserve one source link.';
