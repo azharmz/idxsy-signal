@@ -1,0 +1,32 @@
+name: zeta-sync-rebuild
+
+# Rebuild safety: manual-only until Architecture HQ approves cutover.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    concurrency:
+      group: zeta-sync-rebuild
+      cancel-in-progress: false
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - run: pip install -r requirements.txt
+
+      - name: Regression tests
+        run: python -m pytest -q
+
+      - name: Canonical Zeta member sync
+        run: python backend/zeta_sync.py
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          SUPABASE_USER_ID: ${{ secrets.SUPABASE_USER_ID }}
+          ZETA_MEMBER_COOKIE: ${{ secrets.ZETA_MEMBER_COOKIE }}

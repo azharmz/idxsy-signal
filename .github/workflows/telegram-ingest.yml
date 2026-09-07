@@ -1,0 +1,45 @@
+name: telegram-ingest-rebuild
+
+# Rebuild safety: manual-only until Architecture HQ approves cutover.
+on:
+  workflow_dispatch:
+    inputs:
+      backfill_days:
+        description: 'Optional testing/backfill window in days'
+        required: false
+        type: string
+        default: ''
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    concurrency:
+      group: telegram-ingest-rebuild
+      cancel-in-progress: false
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - run: pip install -r requirements.txt
+
+      - name: Regression tests
+        run: python -m pytest -q
+
+      - name: Canonical Telegram ingest
+        run: python backend/telegram_ingest.py
+        env:
+          TG_API_ID: ${{ secrets.TG_API_ID }}
+          TG_API_HASH: ${{ secrets.TG_API_HASH }}
+          TG_SESSION_STRING: ${{ secrets.TG_SESSION_STRING }}
+          TG_GROUP_ID: ${{ secrets.TG_GROUP_ID }}
+          TG_TOPIC_ID: ${{ secrets.TG_TOPIC_ID }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          SUPABASE_USER_ID: ${{ secrets.SUPABASE_USER_ID }}
+          BACKFILL_SINCE_DAYS: ${{ inputs.backfill_days }}
+          EDIT_RESCAN_DAYS: '7'
+          INGEST_CURSOR_SOURCE: 'telegram_group'

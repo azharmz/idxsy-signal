@@ -1,0 +1,89 @@
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parents[1]
+INGEST = (ROOT / "backend" / "telegram_ingest.py").read_text(encoding="utf-8")
+PARSER = (ROOT / "backend" / "telegram_parser.py").read_text(encoding="utf-8")
+MIGRATION = (ROOT / "supabase" / "migrations" / "20260907_signal_s3_live_ingestion.sql").read_text(encoding="utf-8")
+RPC_PERMISSIONS = (ROOT / "supabase" / "migrations" / "20260907_signal_s3_rpc_permissions.sql").read_text(encoding="utf-8")
+
+
+def test_no_new_trades_data_dependency():
+    assert 'table("trades_data")' not in INGEST
+    assert "payload.trades" not in INGEST
+
+
+def test_native_source_identity_and_source_first_contract_present():
+    assert '"source_system": "TELEGRAM"' in INGEST
+    assert '"native_source_id": native_id' in INGEST
+    assert 'table("source_records")' in INGEST
+    assert "source, needs_reprocess = preserve_source(message, batch_id)" in INGEST
+
+
+def test_cursor_advances_only_after_source_preservation_in_loop():
+    preserve_at = INGEST.index("source, needs_reprocess = preserve_source(message, batch_id)")
+    cursor_at = INGEST.index("set_cursor(safe_frontier)", preserve_at)
+    assert preserve_at < cursor_at
+
+
+def test_parser_failure_vocabulary_is_frozen():
+    assert 'item_type="UNPARSED_SOURCE"' in INGEST
+    assert 'proposed_action="REPROCESS"' in INGEST
+    assert 'conflict_type="PARSE_FAILED"' in INGEST
+
+
+def test_event_language_is_not_legacy_result_classification():
+    assert 'return "event"' in PARSER
+    assert 'return "result"' not in PARSER
+
+
+def test_telegram_events_do_not_write_outcomes():
+    assert 'table("signal_outcomes")' not in INGEST
+    assert 'table("signal_outcome_assertions")' not in INGEST
+    assert 'table("signal_events")' in INGEST
+
+
+def test_edited_event_can_remove_stale_match_and_resolve_review_state():
+    assert "def remove_existing_event" in INGEST
+    assert 'table("signal_events").delete()' in INGEST
+    assert "def resolve_reconciliations" in INGEST
+    assert '["UNMATCHED_EVENT", "AMBIGUOUS_EVENT"]' in INGEST
+    assert '["UNPARSED_SOURCE"]' in INGEST
+
+
+def test_recent_edit_scan_does_not_use_offset_date_backwards_semantics():
+    assert "def fetch_since" in INGEST
+    assert "if message.date < cutoff:" in INGEST
+    assert '"offset_date"' not in INGEST
+
+
+def test_unchanged_complete_sources_are_not_rewritten_on_rescan():
+    assert "def source_derivation_complete" in INGEST
+    assert "elif source_derivation_complete(source):" in INGEST
+    assert 'summary["skipped_unchanged_complete"] += 1' in INGEST
+
+
+def test_gap_001_unique_event_source_index_present():
+    assert "CREATE UNIQUE INDEX IF NOT EXISTS signal_events_source_unique_idx" in MIGRATION
+    assert "ON public.signal_events (source_record_id)" in MIGRATION
+    assert "WHERE source_record_id IS NOT NULL" in MIGRATION
+
+
+def test_gap_002_atomic_publication_rpc_present():
+    assert "CREATE OR REPLACE FUNCTION public.ensure_telegram_publication" in MIGRATION
+    assert "INSERT INTO public.signals" in MIGRATION
+    assert "INSERT INTO public.signal_source_links" in MIGRATION
+    assert "NATIVE_TELEGRAM_PUBLICATION" in MIGRATION
+
+
+def test_edited_publication_updates_same_linked_signal():
+    assert "IF v_signal_id IS NOT NULL THEN" in MIGRATION
+    assert "UPDATE public.signals" in MIGRATION
+    assert "RETURN v_signal_id" in MIGRATION
+
+
+def test_publication_rpc_is_backend_only():
+    assert "FROM PUBLIC" in RPC_PERMISSIONS
+    assert "FROM anon" in RPC_PERMISSIONS
+    assert "FROM authenticated" in RPC_PERMISSIONS
+    assert "TO service_role" in RPC_PERMISSIONS
