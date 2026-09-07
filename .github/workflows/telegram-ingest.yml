@@ -1,14 +1,7 @@
-name: telegram-ingest
+name: telegram-ingest-rebuild
 
+# Rebuild safety: manual-only until Architecture HQ approves cutover.
 on:
-  schedule:
-    # Pagi: 06:00-10:45 WITA
-    - cron: '0,15,30,45 22,23 * * 0-4'
-    - cron: '0,15,30,45 0,1,2 * * 1-5'
-    # Siang: 13:00-17:15 WITA
-    - cron: '0,15,30,45 5,6,7,8 * * 1-5'
-    - cron: '0,15 9 * * 1-5'
-
   workflow_dispatch:
     inputs:
       backfill_days:
@@ -21,7 +14,7 @@ jobs:
   ingest:
     runs-on: ubuntu-latest
     concurrency:
-      group: telegram-ingest
+      group: telegram-ingest-rebuild
       cancel-in-progress: false
 
     steps:
@@ -33,10 +26,11 @@ jobs:
 
       - run: pip install -r requirements.txt
 
-      # Regression gate before touching live sources.
-      - run: python -m pytest -q
+      - name: Regression tests
+        run: python -m pytest -q
 
-      - run: python backend/telegram_ingest.py
+      - name: Canonical Telegram ingest
+        run: python backend/telegram_ingest.py
         env:
           TG_API_ID: ${{ secrets.TG_API_ID }}
           TG_API_HASH: ${{ secrets.TG_API_HASH }}
