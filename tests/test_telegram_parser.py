@@ -27,6 +27,30 @@ Powered by Zeta AI v2.1
     assert row["confidence_score"] == 8
 
 
+def test_parse_signal_preserves_broker_detail():
+    text = """ZETA IDX STOCK SIGNAL
+Saham: BBRI
+Signal: WATCHLIST
+Entry Price: Rp4.500
+Top Buyer:
+YP 10.000 lot
+AK 8.000 lot
+CC 5.000 lot
+
+Top Seller:
+PD 9.000 lot
+XL 7.000 lot
+NI 4.000 lot
+
+Powered by Zeta AI v2.1
+"""
+    row = parse_signal(text, 7005, "2026-09-07T02:00:00+00:00")
+    assert row["top_buyer_1"] == "YP 10.000 lot"
+    assert row["top_buyer_3"] == "CC 5.000 lot"
+    assert row["top_seller_1"] == "PD 9.000 lot"
+    assert row["top_seller_3"] == "NI 4.000 lot"
+
+
 def test_parse_tp_hit_event():
     text = """SIGNAL CONFIRMED
 Symbol: BBCA
