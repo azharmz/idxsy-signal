@@ -42,6 +42,20 @@ def test_telegram_events_do_not_write_outcomes():
     assert 'table("signal_events")' in INGEST
 
 
+def test_edited_event_can_remove_stale_match_and_resolve_review_state():
+    assert "def remove_existing_event" in INGEST
+    assert 'table("signal_events").delete()' in INGEST
+    assert "def resolve_reconciliations" in INGEST
+    assert '["UNMATCHED_EVENT", "AMBIGUOUS_EVENT"]' in INGEST
+    assert '["UNPARSED_SOURCE"]' in INGEST
+
+
+def test_recent_edit_scan_does_not_use_offset_date_backwards_semantics():
+    assert "def fetch_since" in INGEST
+    assert "if message.date < cutoff:" in INGEST
+    assert '"offset_date"' not in INGEST
+
+
 def test_gap_001_unique_event_source_index_present():
     assert "CREATE UNIQUE INDEX IF NOT EXISTS signal_events_source_unique_idx" in MIGRATION
     assert "ON public.signal_events (source_record_id)" in MIGRATION
@@ -53,3 +67,9 @@ def test_gap_002_atomic_publication_rpc_present():
     assert "INSERT INTO public.signals" in MIGRATION
     assert "INSERT INTO public.signal_source_links" in MIGRATION
     assert "NATIVE_TELEGRAM_PUBLICATION" in MIGRATION
+
+
+def test_edited_publication_updates_same_linked_signal():
+    assert "IF v_signal_id IS NOT NULL THEN" in MIGRATION
+    assert "UPDATE public.signals" in MIGRATION
+    assert "RETURN v_signal_id" in MIGRATION
