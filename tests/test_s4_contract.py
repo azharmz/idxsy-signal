@@ -27,6 +27,13 @@ def test_zeta_native_identity_and_source_first_storage():
     assert 'source, changed = preserve_source(raw, batch_id)' in SYNC
 
 
+def test_reconstruction_baseline_not_rewritten_due_fingerprint_format():
+    assert 'def payload_equal' in SYNC
+    assert 'changed = not payload_equal(existing.get("raw_payload"), raw)' in SYNC
+    assert 'existing.get("parser_version") != PARSER_VERSION' not in SYNC
+    assert 'existing.get("fingerprint") != new_fingerprint' not in SYNC
+
+
 def test_reconstruction_reconciliation_semantics_retained():
     assert 'ZETA_MATCH_WINDOW_SECONDS = 300' in RECON
     assert 'PRICE_TOLERANCE_FRACTION = 0.001' in RECON
