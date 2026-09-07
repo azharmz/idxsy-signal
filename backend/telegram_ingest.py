@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
 """IDXSY Signal S3 — canonical Telegram live ingestion.
 
-Architecture:
-    Telegram -> source_records -> SIGNAL/EVENT interpretation -> canonical DB
+Telegram -> source_records -> parse/classify -> signals / signal_events /
+reconciliation_items -> ingest_cursor.
 
 Critical invariants:
-* raw source evidence is durably preserved before parsing/canonicalization;
-* Telegram message.id is native source identity, never canonical signal identity;
-* SIGNAL publication creates signals + signal_source_links atomically via RPC;
-* Telegram result/profit messages become signal_events, never signal_outcomes;
-* unmatched/ambiguous/parser-failed sources go to reconciliation_items;
-* cursor means "last Telegram message durably preserved", not "last parsed";
+* preserve source evidence before interpretation;
+* Telegram message.id is native source identity, never signals.id;
+* canonical publication + provenance link is atomic via RPC;
+* Telegram result/profit messages are events, not outcomes;
+* UNPARSED_SOURCE is only for parser failures, never DB/RPC failures;
+* cursor advances only after durable source preservation;
 * no trades_data dependency.
 """
 
@@ -40,11 +40,9 @@ TG_SESSION_STRING = os.environ["TG_SESSION_STRING"]
 TG_GROUP_ID_RAW = os.environ["TG_GROUP_ID"]
 TG_GROUP_ID: str | int = int(TG_GROUP_ID_RAW) if TG_GROUP_ID_RAW.lstrip("-").isdigit() else TG_GROUP_ID_RAW
 TG_TOPIC_ID = int(os.environ["TG_TOPIC_ID"]) if os.environ.get("TG_TOPIC_ID") else None
-
 SUPABASE_URL = os.environ["SUPABASE_URL"]
 SUPABASE_SERVICE_KEY = os.environ["SUPABASE_SERVICE_KEY"]
 SUPABASE_USER_ID = os.environ["SUPABASE_USER_ID"]
-
 BACKFILL_SINCE_DAYS = int(os.environ["BACKFILL_SINCE_DAYS"]) if os.environ.get("BACKFILL_SINCE_DAYS") else None
 EDIT_RESCAN_DAYS = int(os.environ.get("EDIT_RESCAN_DAYS", "7"))
 CURSOR_SOURCE = os.environ.get("INGEST_CURSOR_SOURCE", "telegram_group")
@@ -62,11 +60,10 @@ def idx_market_date(dt: datetime) -> str:
 
 
 def json_safe(value: Any) -> Any:
-    """Best-effort JSON-safe conversion for Telethon source payloads."""
     return json.loads(json.dumps(value, default=str, ensure_ascii=False))
 
 
-def fingerprint(raw_text: str, raw_payload: dict[str, Any]) -> str:
+def content_fingerprint(raw_text: str, raw_payload: dict[str, Any]) -> str:
     canonical = json.dumps(
         {"raw_text": raw_text, "raw_payload": raw_payload},
         ensure_ascii=False,
@@ -77,18 +74,19 @@ def fingerprint(raw_text: str, raw_payload: dict[str, Any]) -> str:
 
 
 def create_batch() -> str:
-    row = {
-        "user_id": SUPABASE_USER_ID,
-        "batch_type": "LIVE_TELEGRAM",
-        "status": "CREATED",
-        "source_label": "Telegram live ingestion",
-        "parser_version": PARSER_VERSION,
-        "summary": {},
-    }
-    data = sb.table("source_batches").insert(row).execute().data or []
-    if not data:
+    rows = sb.table("source_batches").insert(
+        {
+            "user_id": SUPABASE_USER_ID,
+            "batch_type": "LIVE_TELEGRAM",
+            "status": "CREATED",
+            "source_label": "Telegram live ingestion",
+            "parser_version": PARSER_VERSION,
+            "summary": {},
+        }
+    ).execute().data or []
+    if not rows:
         raise RuntimeError("source_batches insert returned no row")
-    batch_id = data[0]["id"]
+    batch_id = rows[0]["id"]
     sb.table("source_batches").update({"status": "COMMITTING"}).eq("id", batch_id).execute()
     return batch_id
 
@@ -104,17 +102,15 @@ def finish_batch(batch_id: str, status: str, summary: dict[str, Any]) -> None:
 
 
 def get_cursor() -> int:
-    data = (
+    rows = (
         sb.table("ingest_cursor")
         .select("last_processed_msg_id")
         .eq("user_id", SUPABASE_USER_ID)
         .eq("source", CURSOR_SOURCE)
         .limit(1)
-        .execute()
-        .data
-        or []
+        .execute().data or []
     )
-    return int(data[0]["last_processed_msg_id"] or 0) if data else 0
+    return int(rows[0]["last_processed_msg_id"] or 0) if rows else 0
 
 
 def set_cursor(message_id: int) -> None:
@@ -130,48 +126,39 @@ def set_cursor(message_id: int) -> None:
 
 
 def source_lookup(native_source_id: str) -> dict[str, Any] | None:
-    data = (
-        sb.table("source_records")
-        .select("*")
+    rows = (
+        sb.table("source_records").select("*")
         .eq("user_id", SUPABASE_USER_ID)
         .eq("source_system", "TELEGRAM")
         .eq("native_source_id", native_source_id)
-        .limit(1)
-        .execute()
-        .data
-        or []
+        .limit(1).execute().data or []
     )
-    return data[0] if data else None
+    return rows[0] if rows else None
 
 
 def preserve_source(message: Any, batch_id: str) -> tuple[dict[str, Any], bool]:
-    """Persist Telegram evidence before interpretation.
-
-    Returns (source_record, content_changed). Existing historical source rows keep
-    their original batch_id; an edit updates the same source identity.
-    """
+    """Persist evidence before parsing. Existing sources retain original batch_id."""
     native_id = str(message.id)
     raw_text = message.raw_text or ""
-    payload = json_safe(message.to_dict())
-    fp = fingerprint(raw_text, payload)
+    raw_payload = json_safe(message.to_dict())
+    fingerprint = content_fingerprint(raw_text, raw_payload)
     existing = source_lookup(native_id)
-
-    common = {
+    mutable = {
         "source_timestamp_raw": message.date.isoformat(),
         "source_timezone_semantics": "KNOWN_UTC",
         "source_timestamp_utc": utc_iso(message.date),
         "market_date": idx_market_date(message.date),
-        "raw_payload": payload,
+        "raw_payload": raw_payload,
         "raw_text": raw_text,
-        "fingerprint": fp,
+        "fingerprint": fingerprint,
         "parser_version": PARSER_VERSION,
     }
 
     if existing:
-        changed = existing.get("fingerprint") != fp
+        changed = existing.get("fingerprint") != fingerprint
         if changed or existing.get("parser_version") != PARSER_VERSION:
-            sb.table("source_records").update(common).eq("id", existing["id"]).execute()
-            existing.update(common)
+            sb.table("source_records").update(mutable).eq("id", existing["id"]).execute()
+            existing.update(mutable)
         return existing, changed
 
     row = {
@@ -180,16 +167,17 @@ def preserve_source(message: Any, batch_id: str) -> tuple[dict[str, Any], bool]:
         "source_system": "TELEGRAM",
         "native_source_id": native_id,
         "source_record_type": None,
-        **common,
+        **mutable,
     }
-    data = sb.table("source_records").insert(row).execute().data or []
-    if not data:
-        # A concurrent retry may have won the native-identity race.
-        existing = source_lookup(native_id)
-        if existing:
-            return existing, existing.get("fingerprint") != fp
-        raise RuntimeError(f"source_records insert returned no row for Telegram {native_id}")
-    return data[0], True
+    rows = sb.table("source_records").insert(row).execute().data or []
+    if rows:
+        return rows[0], True
+
+    # Defensive native-identity race recovery.
+    raced = source_lookup(native_id)
+    if raced:
+        return raced, raced.get("fingerprint") != fingerprint
+    raise RuntimeError(f"source_records insert returned no row for Telegram {native_id}")
 
 
 def update_source_type(source_record_id: str, record_type: str | None) -> None:
@@ -199,35 +187,23 @@ def update_source_type(source_record_id: str, record_type: str | None) -> None:
 
 
 def reconciliation_lookup(source_record_id: str, item_type: str) -> dict[str, Any] | None:
-    data = (
-        sb.table("reconciliation_items")
-        .select("*")
+    rows = (
+        sb.table("reconciliation_items").select("*")
         .eq("user_id", SUPABASE_USER_ID)
         .eq("source_record_id", source_record_id)
         .eq("item_type", item_type)
         .in_("status", ["QUARANTINED", "REVIEW_REQUIRED", "CONFLICTED"])
-        .order("created_at", desc=True)
-        .limit(1)
-        .execute()
-        .data
-        or []
+        .order("created_at", desc=True).limit(1).execute().data or []
     )
-    return data[0] if data else None
+    return rows[0] if rows else None
 
 
 def upsert_reconciliation(
-    *,
-    batch_id: str,
-    source_record_id: str,
-    item_type: str,
-    status: str,
-    match_confidence: str | None,
-    proposed_action: str,
-    conflict_type: str,
-    evidence: dict[str, Any],
-    candidate_signal_id: str | None = None,
+    *, batch_id: str, source_record_id: str, item_type: str, status: str,
+    match_confidence: str | None, proposed_action: str, conflict_type: str,
+    evidence: dict[str, Any], candidate_signal_id: str | None = None,
 ) -> None:
-    row = {
+    payload = {
         "user_id": SUPABASE_USER_ID,
         "batch_id": batch_id,
         "source_record_id": source_record_id,
@@ -241,17 +217,12 @@ def upsert_reconciliation(
     }
     existing = reconciliation_lookup(source_record_id, item_type)
     if existing:
-        sb.table("reconciliation_items").update(row).eq("id", existing["id"]).execute()
+        sb.table("reconciliation_items").update(payload).eq("id", existing["id"]).execute()
     else:
-        sb.table("reconciliation_items").insert(row).execute()
+        sb.table("reconciliation_items").insert(payload).execute()
 
 
-def record_parse_failure(
-    batch_id: str,
-    source: dict[str, Any],
-    error: Exception,
-    candidate_type: str | None,
-) -> None:
+def record_parse_failure(batch_id: str, source: dict[str, Any], error: Exception, candidate_type: str | None) -> None:
     upsert_reconciliation(
         batch_id=batch_id,
         source_record_id=source["id"],
@@ -266,33 +237,19 @@ def record_parse_failure(
             "parser_version": PARSER_VERSION,
             "error_code": error.__class__.__name__,
             "error_message": str(error),
-            "source_record_type_candidate": candidate_type.upper() if candidate_type else None,
+            "source_record_type_candidate": candidate_type,
         },
     )
 
 
 def signal_detail(parsed: dict[str, Any]) -> dict[str, Any]:
     relational = {
-        "msg_id",
-        "date",
-        "type",
-        "symbol",
-        "signal_type",
-        "entry_price",
-        "take_profit",
-        "take_profit_pct",
-        "target2_price",
-        "target2_pct",
-        "stop_loss",
-        "stop_loss_pct",
-        "sl_moderat",
-        "sl_moderat_pct",
-        "sl_konservatif",
-        "sl_konservatif_pct",
-        "confidence_score",
-        "confidence_label",
+        "msg_id", "date", "type", "symbol", "signal_type", "entry_price",
+        "take_profit", "take_profit_pct", "target2_price", "target2_pct",
+        "stop_loss", "stop_loss_pct", "sl_moderat", "sl_moderat_pct",
+        "sl_konservatif", "sl_konservatif_pct", "confidence_score", "confidence_label",
     }
-    return {key: value for key, value in parsed.items() if key not in relational and value is not None}
+    return {k: v for k, v in parsed.items() if k not in relational and v is not None}
 
 
 def publication_payload(parsed: dict[str, Any], source: dict[str, Any]) -> dict[str, Any]:
@@ -334,80 +291,53 @@ def ensure_publication(source: dict[str, Any], parsed: dict[str, Any]) -> str:
         if isinstance(first, str):
             return first
         if isinstance(first, dict):
-            return first.get("signal_id") or first.get("ensure_telegram_publication")
+            value = first.get("signal_id") or first.get("ensure_telegram_publication")
+            if value:
+                return value
     if isinstance(result, dict):
-        return result.get("signal_id") or result.get("ensure_telegram_publication")
+        value = result.get("signal_id") or result.get("ensure_telegram_publication")
+        if value:
+            return value
     raise RuntimeError(f"ensure_telegram_publication returned unexpected result: {result!r}")
 
 
 def event_candidates(parsed: dict[str, Any], event_timestamp: str) -> list[dict[str, Any]]:
-    ticker = parsed["symbol"]
-    data = (
+    rows = (
         sb.table("signals")
         .select("id,ticker,signal_timestamp,entry_price")
         .eq("user_id", SUPABASE_USER_ID)
-        .eq("ticker", ticker)
+        .eq("ticker", parsed["symbol"])
         .lte("signal_timestamp", event_timestamp)
         .order("signal_timestamp", desc=True)
-        .limit(25)
-        .execute()
-        .data
-        or []
+        .limit(25).execute().data or []
     )
-    if not data:
+    if not rows:
         return []
 
-    # Legacy-compatible event window: the event belongs to the most recent
-    # publication interval for this ticker. If several publications share that
-    # effective interval/timestamp, preserve ambiguity rather than choosing one.
-    latest_ts = data[0]["signal_timestamp"]
-    same_window = [row for row in data if row["signal_timestamp"] == latest_ts]
-
+    latest_timestamp = rows[0]["signal_timestamp"]
+    candidates = [row for row in rows if row["signal_timestamp"] == latest_timestamp]
     event_entry = parsed.get("entry")
     if event_entry is None:
-        return same_window
+        return candidates
 
-    candidates: list[dict[str, Any]] = []
-    for row in same_window:
+    filtered: list[dict[str, Any]] = []
+    for row in candidates:
         signal_entry = row.get("entry_price")
         if signal_entry in (None, 0):
-            candidates.append(row)
+            filtered.append(row)
             continue
-        diff_pct = abs(float(event_entry) - float(signal_entry)) / float(signal_entry) * 100
-        if diff_pct <= ENTRY_MATCH_TOLERANCE_PCT:
-            candidates.append(row)
-    return candidates
+        difference = abs(float(event_entry) - float(signal_entry)) / float(signal_entry) * 100
+        if difference <= ENTRY_MATCH_TOLERANCE_PCT:
+            filtered.append(row)
+    return filtered
 
 
 def existing_event(source_record_id: str) -> dict[str, Any] | None:
-    data = (
-        sb.table("signal_events")
-        .select("*")
-        .eq("source_record_id", source_record_id)
-        .limit(1)
-        .execute()
-        .data
-        or []
+    rows = (
+        sb.table("signal_events").select("*")
+        .eq("source_record_id", source_record_id).limit(1).execute().data or []
     )
-    return data[0] if data else None
-
-
-def event_data(parsed: dict[str, Any], match_evidence: dict[str, Any]) -> dict[str, Any]:
-    return {
-        key: value
-        for key, value in {
-            "status_text": parsed.get("status_text"),
-            "entry": parsed.get("entry"),
-            "exit_price": parsed.get("exit_price"),
-            "day_high": parsed.get("day_high"),
-            "peak_price": parsed.get("peak_price"),
-            "peak_pct": parsed.get("peak_pct"),
-            "profit_pct": parsed.get("profit_pct"),
-            "duration_days_confirm": parsed.get("duration_days_confirm"),
-            "reconciliation": match_evidence,
-        }.items()
-        if value is not None
-    }
+    return rows[0] if rows else None
 
 
 def process_event(batch_id: str, source: dict[str, Any], parsed: dict[str, Any]) -> str:
@@ -422,42 +352,47 @@ def process_event(batch_id: str, source: dict[str, Any], parsed: dict[str, Any])
 
     if not candidates:
         upsert_reconciliation(
-            batch_id=batch_id,
-            source_record_id=source["id"],
-            item_type="UNMATCHED_EVENT",
-            status="QUARANTINED",
-            match_confidence=None,
-            proposed_action="QUARANTINE",
-            conflict_type="NO_DEFENSIBLE_SIGNAL_CANDIDATE",
+            batch_id=batch_id, source_record_id=source["id"],
+            item_type="UNMATCHED_EVENT", status="QUARANTINED", match_confidence=None,
+            proposed_action="QUARANTINE", conflict_type="NO_DEFENSIBLE_SIGNAL_CANDIDATE",
             evidence=evidence,
         )
         return "UNMATCHED"
 
     if len(candidates) > 1:
         upsert_reconciliation(
-            batch_id=batch_id,
-            source_record_id=source["id"],
-            item_type="AMBIGUOUS_EVENT",
-            status="REVIEW_REQUIRED",
-            match_confidence="AMBIGUOUS",
-            proposed_action="REVIEW",
-            conflict_type="MULTIPLE_SIGNAL_CANDIDATES",
+            batch_id=batch_id, source_record_id=source["id"],
+            item_type="AMBIGUOUS_EVENT", status="REVIEW_REQUIRED", match_confidence="AMBIGUOUS",
+            proposed_action="REVIEW", conflict_type="MULTIPLE_SIGNAL_CANDIDATES",
             evidence=evidence,
         )
         return "AMBIGUOUS"
 
     signal_id = candidates[0]["id"]
+    event_specific = {
+        key: value for key, value in {
+            "status_text": parsed.get("status_text"),
+            "entry": parsed.get("entry"),
+            "exit_price": parsed.get("exit_price"),
+            "day_high": parsed.get("day_high"),
+            "peak_price": parsed.get("peak_price"),
+            "peak_pct": parsed.get("peak_pct"),
+            "profit_pct": parsed.get("profit_pct"),
+            "duration_days_confirm": parsed.get("duration_days_confirm"),
+            "reconciliation": {**evidence, "match_confidence": "HIGH_CONFIDENCE"},
+        }.items() if value is not None
+    }
     payload = {
         "user_id": SUPABASE_USER_ID,
         "signal_id": signal_id,
         "source_record_id": source["id"],
         "event_type": parsed["type"],
         "event_timestamp": source["source_timestamp_utc"],
-        "event_data": event_data(parsed, {**evidence, "match_confidence": "HIGH_CONFIDENCE"}),
+        "event_data": event_specific,
     }
-    event = existing_event(source["id"])
-    if event:
-        sb.table("signal_events").update(payload).eq("id", event["id"]).execute()
+    existing = existing_event(source["id"])
+    if existing:
+        sb.table("signal_events").update(payload).eq("id", existing["id"]).execute()
     else:
         sb.table("signal_events").insert(payload).execute()
     return "MATCHED"
@@ -466,60 +401,56 @@ def process_event(batch_id: str, source: dict[str, Any], parsed: dict[str, Any])
 def process_preserved_source(batch_id: str, source: dict[str, Any]) -> str:
     text = source.get("raw_text") or ""
     category = classify(text)
-    candidate_type = "EVENT" if category == "event" else category.upper() if category in ("signal", "regime") else None
 
-    try:
-        if category == "signal":
+    if category == "signal":
+        try:
             parsed = parse_signal(text, int(source["native_source_id"]), source["source_timestamp_utc"])
-            update_source_type(source["id"], "SIGNAL")
-            ensure_publication(source, parsed)
-            return "SIGNAL"
-
-        if category == "event":
-            parsed = parse_result(text, int(source["native_source_id"]), source["source_timestamp_utc"])
-            update_source_type(source["id"], "EVENT")
-            return process_event(batch_id, source, parsed)
-
-        # Regime/other are preserved source evidence but are not canonical Signal
-        # publication/event rows in S3.
-        update_source_type(source["id"], None)
-        return category.upper()
-
-    except Exception as exc:
-        # Source evidence is already durable; parser/canonical interpretation remains retryable.
-        if isinstance(exc, ParseError):
+        except ParseError as exc:
             update_source_type(source["id"], None)
-        record_parse_failure(batch_id, source, exc, candidate_type)
-        raise
+            record_parse_failure(batch_id, source, exc, "SIGNAL")
+            return "UNPARSED"
+        update_source_type(source["id"], "SIGNAL")
+        ensure_publication(source, parsed)  # technical/RPC failures must propagate
+        return "SIGNAL"
+
+    if category == "event":
+        try:
+            parsed = parse_result(text, int(source["native_source_id"]), source["source_timestamp_utc"])
+        except ParseError as exc:
+            update_source_type(source["id"], None)
+            record_parse_failure(batch_id, source, exc, "EVENT")
+            return "UNPARSED"
+        update_source_type(source["id"], "EVENT")
+        return process_event(batch_id, source, parsed)  # DB/matching failures must propagate
+
+    # S3 preserves regime/other evidence but does not create canonical signal/event rows.
+    update_source_type(source["id"], None)
+    return category.upper()
 
 
 def fetch_messages(client: TelegramClient, cursor: int) -> list[Any]:
-    kwargs: dict[str, Any] = {"reverse": True}
+    common: dict[str, Any] = {"reverse": True}
     if TG_TOPIC_ID is not None:
-        kwargs["reply_to"] = TG_TOPIC_ID
+        common["reply_to"] = TG_TOPIC_ID
 
     if BACKFILL_SINCE_DAYS is not None:
-        cutoff = datetime.now(timezone.utc) - timedelta(days=BACKFILL_SINCE_DAYS)
-        kwargs["offset_date"] = cutoff
-        messages = list(client.iter_messages(TG_GROUP_ID, **kwargs))
-    else:
-        kwargs["min_id"] = cursor
-        messages = list(client.iter_messages(TG_GROUP_ID, **kwargs))
+        kwargs = dict(common)
+        kwargs["offset_date"] = datetime.now(timezone.utc) - timedelta(days=BACKFILL_SINCE_DAYS)
+        return list(client.iter_messages(TG_GROUP_ID, **kwargs))
 
-        # Cursor cannot discover edits to old IDs. Re-scan a short recent window and
-        # let fingerprint/native identity decide whether any existing source evolved.
-        if EDIT_RESCAN_DAYS > 0:
-            recent_kwargs: dict[str, Any] = {
-                "reverse": True,
-                "offset_date": datetime.now(timezone.utc) - timedelta(days=EDIT_RESCAN_DAYS),
-            }
-            if TG_TOPIC_ID is not None:
-                recent_kwargs["reply_to"] = TG_TOPIC_ID
-            recent = list(client.iter_messages(TG_GROUP_ID, **recent_kwargs))
-            by_id = {message.id: message for message in recent}
-            by_id.update({message.id: message for message in messages})
-            messages = sorted(by_id.values(), key=lambda message: message.id)
+    kwargs = dict(common)
+    kwargs["min_id"] = cursor
+    messages = list(client.iter_messages(TG_GROUP_ID, **kwargs))
 
+    # Cursor cannot discover edited old IDs. A small recent re-scan lets fingerprint
+    # detect source evolution while native_source_id remains unchanged.
+    if EDIT_RESCAN_DAYS > 0:
+        recent_kwargs = dict(common)
+        recent_kwargs["offset_date"] = datetime.now(timezone.utc) - timedelta(days=EDIT_RESCAN_DAYS)
+        recent = list(client.iter_messages(TG_GROUP_ID, **recent_kwargs))
+        by_id = {message.id: message for message in recent}
+        by_id.update({message.id: message for message in messages})
+        messages = sorted(by_id.values(), key=lambda message: message.id)
     return messages
 
 
@@ -549,15 +480,10 @@ def main() -> int:
         log.info("Fetched %s Telegram messages (cursor=%s)", len(messages), cursor)
 
         for message in messages:
-            # Empty/service messages still need a durable source record before the cursor
-            # can move beyond their native ID.
-            try:
-                source, changed = preserve_source(message, batch_id)
-            except Exception:
-                log.exception("Source persistence failed for Telegram msg %s", message.id)
-                raise
+            # Any failure here is fatal for this run: cursor must not cross an
+            # unpreserved Telegram source.
+            source, changed = preserve_source(message, batch_id)
 
-            # Cursor may move after durable source preservation, never before.
             if message.id > safe_frontier:
                 safe_frontier = message.id
                 set_cursor(safe_frontier)
@@ -565,15 +491,9 @@ def main() -> int:
             if changed:
                 summary["source_new_or_changed"] += 1
 
-            # Unchanged re-scan rows can still be retried if canonical derivation is incomplete;
-            # processing is intentionally idempotent.
-            try:
-                result = process_preserved_source(batch_id, source)
-            except Exception as exc:
-                summary["unparsed_source"] += 1
-                review_required = True
-                log.error("Canonical processing failed for Telegram msg %s: %s", message.id, exc)
-                continue
+            # Parse failures return UNPARSED. Technical DB/RPC failures raise and
+            # fail the run so that the preserved source is retried on the next scan.
+            result = process_preserved_source(batch_id, source)
 
             if result == "SIGNAL":
                 summary["signals"] += 1
@@ -585,18 +505,22 @@ def main() -> int:
             elif result == "AMBIGUOUS":
                 summary["events_ambiguous"] += 1
                 review_required = True
+            elif result == "UNPARSED":
+                summary["unparsed_source"] += 1
+                review_required = True
             elif result == "REGIME":
                 summary["regime"] += 1
             else:
                 summary["other"] += 1
 
-        final_status = "PARTIAL_REVIEW_REQUIRED" if review_required else "VERIFIED"
-        finish_batch(batch_id, final_status, summary)
+        finish_batch(batch_id, "PARTIAL_REVIEW_REQUIRED" if review_required else "VERIFIED", summary)
         log.info("S3 Telegram ingestion complete: %s", summary)
-        return 0 if not review_required else 1
+        # Unmatched/ambiguous/unparsed are durable review states, not infrastructure failure.
+        return 0
 
     except Exception as exc:
         summary["fatal_error"] = f"{exc.__class__.__name__}: {exc}"
+        log.exception("S3 Telegram ingestion failed")
         try:
             finish_batch(batch_id, "FAILED", summary)
         except Exception:
