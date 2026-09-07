@@ -11,6 +11,7 @@ Critical invariants:
 * Telegram result/profit messages are events, not outcomes;
 * UNPARSED_SOURCE is only for parser failures, never DB/RPC failures;
 * cursor advances only after durable source preservation;
+* edited sources reprocess the same canonical identity and clear stale state;
 * no trades_data dependency.
 """
 
@@ -173,7 +174,6 @@ def preserve_source(message: Any, batch_id: str) -> tuple[dict[str, Any], bool]:
     if rows:
         return rows[0], True
 
-    # Defensive native-identity race recovery.
     raced = source_lookup(native_id)
     if raced:
         return raced, raced.get("fingerprint") != fingerprint
@@ -196,6 +196,28 @@ def reconciliation_lookup(source_record_id: str, item_type: str) -> dict[str, An
         .order("created_at", desc=True).limit(1).execute().data or []
     )
     return rows[0] if rows else None
+
+
+def resolve_reconciliations(source_record_id: str, item_types: list[str], note: str) -> None:
+    """Close stale unresolved rows after a source is successfully reprocessed."""
+    if not item_types:
+        return
+    rows = (
+        sb.table("reconciliation_items")
+        .select("id")
+        .eq("user_id", SUPABASE_USER_ID)
+        .eq("source_record_id", source_record_id)
+        .in_("item_type", item_types)
+        .in_("status", ["QUARANTINED", "REVIEW_REQUIRED", "CONFLICTED"])
+        .execute().data or []
+    )
+    if not rows:
+        return
+    now = datetime.now(timezone.utc).isoformat()
+    for row in rows:
+        sb.table("reconciliation_items").update(
+            {"status": "ACCEPTED", "review_note": note, "reviewed_at": now}
+        ).eq("id", row["id"]).execute()
 
 
 def upsert_reconciliation(
@@ -340,6 +362,12 @@ def existing_event(source_record_id: str) -> dict[str, Any] | None:
     return rows[0] if rows else None
 
 
+def remove_existing_event(source_record_id: str) -> None:
+    existing = existing_event(source_record_id)
+    if existing:
+        sb.table("signal_events").delete().eq("id", existing["id"]).execute()
+
+
 def process_event(batch_id: str, source: dict[str, Any], parsed: dict[str, Any]) -> str:
     candidates = event_candidates(parsed, source["source_timestamp_utc"])
     evidence = {
@@ -351,6 +379,10 @@ def process_event(batch_id: str, source: dict[str, Any], parsed: dict[str, Any])
     }
 
     if not candidates:
+        # An edited event may previously have been matched. Current source content
+        # is authoritative for current event interpretation, so remove stale event.
+        remove_existing_event(source["id"])
+        resolve_reconciliations(source["id"], ["AMBIGUOUS_EVENT"], "Reprocessed as UNMATCHED_EVENT")
         upsert_reconciliation(
             batch_id=batch_id, source_record_id=source["id"],
             item_type="UNMATCHED_EVENT", status="QUARANTINED", match_confidence=None,
@@ -360,6 +392,8 @@ def process_event(batch_id: str, source: dict[str, Any], parsed: dict[str, Any])
         return "UNMATCHED"
 
     if len(candidates) > 1:
+        remove_existing_event(source["id"])
+        resolve_reconciliations(source["id"], ["UNMATCHED_EVENT"], "Reprocessed as AMBIGUOUS_EVENT")
         upsert_reconciliation(
             batch_id=batch_id, source_record_id=source["id"],
             item_type="AMBIGUOUS_EVENT", status="REVIEW_REQUIRED", match_confidence="AMBIGUOUS",
@@ -395,6 +429,12 @@ def process_event(batch_id: str, source: dict[str, Any], parsed: dict[str, Any])
         sb.table("signal_events").update(payload).eq("id", existing["id"]).execute()
     else:
         sb.table("signal_events").insert(payload).execute()
+
+    resolve_reconciliations(
+        source["id"],
+        ["UNMATCHED_EVENT", "AMBIGUOUS_EVENT"],
+        "Resolved automatically after successful event reprocess",
+    )
     return "MATCHED"
 
 
@@ -410,7 +450,11 @@ def process_preserved_source(batch_id: str, source: dict[str, Any]) -> str:
             record_parse_failure(batch_id, source, exc, "SIGNAL")
             return "UNPARSED"
         update_source_type(source["id"], "SIGNAL")
-        ensure_publication(source, parsed)  # technical/RPC failures must propagate
+        ensure_publication(source, parsed)
+        resolve_reconciliations(
+            source["id"], ["UNPARSED_SOURCE"],
+            "Resolved automatically after successful SIGNAL reprocess",
+        )
         return "SIGNAL"
 
     if category == "event":
@@ -421,33 +465,49 @@ def process_preserved_source(batch_id: str, source: dict[str, Any]) -> str:
             record_parse_failure(batch_id, source, exc, "EVENT")
             return "UNPARSED"
         update_source_type(source["id"], "EVENT")
-        return process_event(batch_id, source, parsed)  # DB/matching failures must propagate
+        resolve_reconciliations(
+            source["id"], ["UNPARSED_SOURCE"],
+            "Resolved automatically after successful EVENT parse",
+        )
+        return process_event(batch_id, source, parsed)
 
-    # S3 preserves regime/other evidence but does not create canonical signal/event rows.
     update_source_type(source["id"], None)
     return category.upper()
 
 
-def fetch_messages(client: TelegramClient, cursor: int) -> list[Any]:
-    common: dict[str, Any] = {"reverse": True}
+def fetch_since(client: TelegramClient, cutoff: datetime) -> list[Any]:
+    """Fetch messages sent at/after cutoff.
+
+    Telethon's offset_date means "messages before this date", so a recent-window
+    scan must iterate newest->oldest and stop once it crosses the cutoff.
+    """
+    kwargs: dict[str, Any] = {"reverse": False}
     if TG_TOPIC_ID is not None:
-        common["reply_to"] = TG_TOPIC_ID
+        kwargs["reply_to"] = TG_TOPIC_ID
 
+    recent: list[Any] = []
+    for message in client.iter_messages(TG_GROUP_ID, **kwargs):
+        if message.date < cutoff:
+            break
+        recent.append(message)
+    return sorted(recent, key=lambda message: message.id)
+
+
+def fetch_messages(client: TelegramClient, cursor: int) -> list[Any]:
     if BACKFILL_SINCE_DAYS is not None:
-        kwargs = dict(common)
-        kwargs["offset_date"] = datetime.now(timezone.utc) - timedelta(days=BACKFILL_SINCE_DAYS)
-        return list(client.iter_messages(TG_GROUP_ID, **kwargs))
+        cutoff = datetime.now(timezone.utc) - timedelta(days=BACKFILL_SINCE_DAYS)
+        return fetch_since(client, cutoff)
 
-    kwargs = dict(common)
-    kwargs["min_id"] = cursor
-    messages = list(client.iter_messages(TG_GROUP_ID, **kwargs))
+    incremental_kwargs: dict[str, Any] = {"reverse": True, "min_id": cursor}
+    if TG_TOPIC_ID is not None:
+        incremental_kwargs["reply_to"] = TG_TOPIC_ID
+    messages = list(client.iter_messages(TG_GROUP_ID, **incremental_kwargs))
 
-    # Cursor cannot discover edited old IDs. A small recent re-scan lets fingerprint
-    # detect source evolution while native_source_id remains unchanged.
+    # min_id cannot discover edits to older IDs. Re-scan only a recent time window
+    # and use fingerprint/native identity to detect source evolution.
     if EDIT_RESCAN_DAYS > 0:
-        recent_kwargs = dict(common)
-        recent_kwargs["offset_date"] = datetime.now(timezone.utc) - timedelta(days=EDIT_RESCAN_DAYS)
-        recent = list(client.iter_messages(TG_GROUP_ID, **recent_kwargs))
+        cutoff = datetime.now(timezone.utc) - timedelta(days=EDIT_RESCAN_DAYS)
+        recent = fetch_since(client, cutoff)
         by_id = {message.id: message for message in recent}
         by_id.update({message.id: message for message in messages})
         messages = sorted(by_id.values(), key=lambda message: message.id)
@@ -480,8 +540,7 @@ def main() -> int:
         log.info("Fetched %s Telegram messages (cursor=%s)", len(messages), cursor)
 
         for message in messages:
-            # Any failure here is fatal for this run: cursor must not cross an
-            # unpreserved Telegram source.
+            # Any failure here is fatal: cursor must not cross an unpreserved source.
             source, changed = preserve_source(message, batch_id)
 
             if message.id > safe_frontier:
@@ -491,8 +550,8 @@ def main() -> int:
             if changed:
                 summary["source_new_or_changed"] += 1
 
-            # Parse failures return UNPARSED. Technical DB/RPC failures raise and
-            # fail the run so that the preserved source is retried on the next scan.
+            # Parser failures return UNPARSED. Technical DB/RPC failures propagate and
+            # fail this run, while the already-preserved source remains retryable.
             result = process_preserved_source(batch_id, source)
 
             if result == "SIGNAL":
@@ -515,7 +574,6 @@ def main() -> int:
 
         finish_batch(batch_id, "PARTIAL_REVIEW_REQUIRED" if review_required else "VERIFIED", summary)
         log.info("S3 Telegram ingestion complete: %s", summary)
-        # Unmatched/ambiguous/unparsed are durable review states, not infrastructure failure.
         return 0
 
     except Exception as exc:
