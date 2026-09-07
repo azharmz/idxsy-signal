@@ -34,7 +34,7 @@ jobs:
       - run: pip install -r requirements.txt
 
       # Regression gate before touching live sources.
-      - run: pytest -q
+      - run: python -m pytest -q
 
       - run: python backend/telegram_ingest.py
         env:
