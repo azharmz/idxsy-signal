@@ -12,6 +12,7 @@ Critical invariants:
 * UNPARSED_SOURCE is only for parser failures, never DB/RPC failures;
 * cursor advances only after durable source preservation;
 * edited sources reprocess the same canonical identity and clear stale state;
+* unchanged, already-derived sources are not rewritten on recent edit scans;
 * no trades_data dependency.
 """
 
@@ -138,7 +139,12 @@ def source_lookup(native_source_id: str) -> dict[str, Any] | None:
 
 
 def preserve_source(message: Any, batch_id: str) -> tuple[dict[str, Any], bool]:
-    """Persist evidence before parsing. Existing sources retain original batch_id."""
+    """Persist evidence before parsing. Existing sources retain original batch_id.
+
+    The boolean is `needs_reprocess`: true for new content, edited content, or a
+    parser-version change. Parser upgrades therefore re-interpret preserved raw
+    evidence even when Telegram content itself did not change.
+    """
     native_id = str(message.id)
     raw_text = message.raw_text or ""
     raw_payload = json_safe(message.to_dict())
@@ -156,11 +162,14 @@ def preserve_source(message: Any, batch_id: str) -> tuple[dict[str, Any], bool]:
     }
 
     if existing:
-        changed = existing.get("fingerprint") != fingerprint
-        if changed or existing.get("parser_version") != PARSER_VERSION:
+        needs_reprocess = (
+            existing.get("fingerprint") != fingerprint
+            or existing.get("parser_version") != PARSER_VERSION
+        )
+        if needs_reprocess:
             sb.table("source_records").update(mutable).eq("id", existing["id"]).execute()
             existing.update(mutable)
-        return existing, changed
+        return existing, needs_reprocess
 
     row = {
         "user_id": SUPABASE_USER_ID,
@@ -176,7 +185,11 @@ def preserve_source(message: Any, batch_id: str) -> tuple[dict[str, Any], bool]:
 
     raced = source_lookup(native_id)
     if raced:
-        return raced, raced.get("fingerprint") != fingerprint
+        needs_reprocess = (
+            raced.get("fingerprint") != fingerprint
+            or raced.get("parser_version") != PARSER_VERSION
+        )
+        return raced, needs_reprocess
     raise RuntimeError(f"source_records insert returned no row for Telegram {native_id}")
 
 
@@ -362,6 +375,32 @@ def existing_event(source_record_id: str) -> dict[str, Any] | None:
     return rows[0] if rows else None
 
 
+def source_derivation_complete(source: dict[str, Any]) -> bool:
+    """Whether an unchanged source already has a durable current interpretation.
+
+    This prevents the 7-day edit rescan from touching canonical rows every 15
+    minutes, while still retrying sources left incomplete by a technical failure.
+    """
+    category = classify(source.get("raw_text") or "")
+    if category == "signal":
+        rows = (
+            sb.table("signal_source_links").select("id")
+            .eq("source_record_id", source["id"]).limit(1).execute().data or []
+        )
+        return bool(rows)
+
+    if category == "event":
+        if existing_event(source["id"]):
+            return True
+        for item_type in ("UNPARSED_SOURCE", "UNMATCHED_EVENT", "AMBIGUOUS_EVENT"):
+            if reconciliation_lookup(source["id"], item_type):
+                return True
+        return False
+
+    # Regime/other are source evidence only in S3; no canonical derivation is required.
+    return True
+
+
 def remove_existing_event(source_record_id: str) -> None:
     existing = existing_event(source_record_id)
     if existing:
@@ -379,8 +418,6 @@ def process_event(batch_id: str, source: dict[str, Any], parsed: dict[str, Any])
     }
 
     if not candidates:
-        # An edited event may previously have been matched. Current source content
-        # is authoritative for current event interpretation, so remove stale event.
         remove_existing_event(source["id"])
         resolve_reconciliations(source["id"], ["AMBIGUOUS_EVENT"], "Reprocessed as UNMATCHED_EVENT")
         upsert_reconciliation(
@@ -503,8 +540,6 @@ def fetch_messages(client: TelegramClient, cursor: int) -> list[Any]:
         incremental_kwargs["reply_to"] = TG_TOPIC_ID
     messages = list(client.iter_messages(TG_GROUP_ID, **incremental_kwargs))
 
-    # min_id cannot discover edits to older IDs. Re-scan only a recent time window
-    # and use fingerprint/native identity to detect source evolution.
     if EDIT_RESCAN_DAYS > 0:
         cutoff = datetime.now(timezone.utc) - timedelta(days=EDIT_RESCAN_DAYS)
         recent = fetch_since(client, cutoff)
@@ -526,6 +561,7 @@ def main() -> int:
         "events_unmatched": 0,
         "events_ambiguous": 0,
         "unparsed_source": 0,
+        "skipped_unchanged_complete": 0,
         "other": 0,
         "regime": 0,
     }
@@ -540,18 +576,20 @@ def main() -> int:
         log.info("Fetched %s Telegram messages (cursor=%s)", len(messages), cursor)
 
         for message in messages:
-            # Any failure here is fatal: cursor must not cross an unpreserved source.
-            source, changed = preserve_source(message, batch_id)
+            source, needs_reprocess = preserve_source(message, batch_id)
 
             if message.id > safe_frontier:
                 safe_frontier = message.id
                 set_cursor(safe_frontier)
 
-            if changed:
+            if needs_reprocess:
                 summary["source_new_or_changed"] += 1
+            elif source_derivation_complete(source):
+                summary["skipped_unchanged_complete"] += 1
+                continue
 
-            # Parser failures return UNPARSED. Technical DB/RPC failures propagate and
-            # fail this run, while the already-preserved source remains retryable.
+            # If an unchanged source is incomplete because of a previous technical
+            # failure, it falls through and retries canonical derivation.
             result = process_preserved_source(batch_id, source)
 
             if result == "SIGNAL":
