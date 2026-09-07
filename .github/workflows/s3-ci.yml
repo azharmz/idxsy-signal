@@ -1,4 +1,4 @@
-name: s3-ci
+name: rebuild-ci
 
 on:
   pull_request:
@@ -20,4 +20,10 @@ jobs:
           python-version: '3.11'
       - run: pip install -r requirements.txt
       - run: python -m pytest -q
-      - run: python -m py_compile backend/telegram_parser.py backend/telegram_ingest.py
+      - run: >-
+          python -m py_compile
+          backend/telegram_parser.py
+          backend/telegram_ingest.py
+          backend/reconciliation.py
+          backend/outcome_resolver.py
+          backend/zeta_sync.py
