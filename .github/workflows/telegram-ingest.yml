@@ -1,0 +1,51 @@
+name: telegram-ingest
+
+on:
+  schedule:
+    # Pagi: 06:00-10:45 WITA
+    - cron: '0,15,30,45 22,23 * * 0-4'
+    - cron: '0,15,30,45 0,1,2 * * 1-5'
+    # Siang: 13:00-17:15 WITA
+    - cron: '0,15,30,45 5,6,7,8 * * 1-5'
+    - cron: '0,15 9 * * 1-5'
+
+  workflow_dispatch:
+    inputs:
+      backfill_days:
+        description: 'Optional testing/backfill window in days'
+        required: false
+        type: string
+        default: ''
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    concurrency:
+      group: telegram-ingest
+      cancel-in-progress: false
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - run: pip install -r requirements.txt
+
+      # Regression gate before touching live sources.
+      - run: pytest -q
+
+      - run: python backend/telegram_ingest.py
+        env:
+          TG_API_ID: ${{ secrets.TG_API_ID }}
+          TG_API_HASH: ${{ secrets.TG_API_HASH }}
+          TG_SESSION_STRING: ${{ secrets.TG_SESSION_STRING }}
+          TG_GROUP_ID: ${{ secrets.TG_GROUP_ID }}
+          TG_TOPIC_ID: ${{ secrets.TG_TOPIC_ID }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          SUPABASE_USER_ID: ${{ secrets.SUPABASE_USER_ID }}
+          BACKFILL_SINCE_DAYS: ${{ inputs.backfill_days }}
+          EDIT_RESCAN_DAYS: '7'
+          INGEST_CURSOR_SOURCE: 'telegram_group'
